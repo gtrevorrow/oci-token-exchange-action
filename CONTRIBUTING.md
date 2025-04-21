@@ -145,26 +145,15 @@ The project follows a structured process from development to production, using a
    - A repository maintainer will run final verification on the release candidate.
    - Once approved, a repository maintainer will merge the pull request to `main`.
    - **Important:** Use either **"Create a merge commit"** or **"Rebase and merge"**. Do **NOT** use "Squash and merge", as this will prevent `semantic-release` from correctly determining the version and generating release notes.
-
-4. **Release Tagging:**
-   - After merging to `main`, a repository maintainer will manually create a tag starting with `release-` followed by a timestamp to trigger the release process. This tag *only* triggers the workflow; `semantic-release` will calculate and create the actual version tag (e.g., `v1.1.0`).
-     ```bash
-     git checkout main
-     git pull
-     # Create a timestamp-based tag like release-20250418103000
-     TIMESTAMP=$(date +%Y%m%d%H%M%S)
-     git tag -a release-${TIMESTAMP} -m "Triggering release workflow"
-     git push origin release-${TIMESTAMP}
-     ```
-   - The GitHub workflow (`release.yml`) is triggered when a tag matching `release-*` is pushed.
-   - Once triggered, `semantic-release` will:
-     - Analyze the commits on `main` since the last actual version tag (e.g., `v1.0.0`).
+   - Merging to `main` will automatically trigger the `release.yml` workflow.
+   - `semantic-release` will then:
+     - Analyze the commits on `main` since the last release tag.
      - Determine the appropriate next version number based on conventional commits.
      - Generate release notes automatically from commit messages.
      - Create a GitHub release and a corresponding version tag (e.g., `v1.1.0`).
      - Publish the package to npm with the calculated version.
 
-5. **Test Publishing:**  
+4. **Test Publishing:**  
    For test releases, use the `.github/workflows/test-publish.yml` workflow, which can be triggered manually from the Actions tab. Test packages are published to npm with a tag like `1.2.3-YYYYMMDD-beta`.
 
    To install a package published with a specific tag (e.g., `beta`):
