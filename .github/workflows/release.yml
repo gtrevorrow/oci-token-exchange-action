@@ -7,18 +7,13 @@ on:
       - completed
     branches: # Filters for the branch the "Build and Commit" workflow ran on
       - main
-  push:
-    branches:
-      - main
 
 jobs:
   release:
     runs-on: ubuntu-latest
     # Condition to ensure this job only runs if the triggering workflow ("Build and Commit")
     # was itself triggered by a 'push' event to 'main' and completed successfully.
-    if: >-
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
-      || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
     permissions:
       # Needs write access to create releases, read packages, and write for discussions (for notes)
       contents: 'write'
@@ -54,9 +49,10 @@ jobs:
         id: semantic
         continue-on-error: true
         run: |
-          set -o pipefail # Ensure pipeline fails if node script fails before output redirection
-          node .github/scripts/run-semantic-release.js > semantic-release-output.json 2> semantic-release-error.log
-          echo "SCRIPT_EXIT_CODE=$?" >> $GITHUB_ENV
+          set -o pipefail
+          node .github/scripts/run-semantic-release.js \
+            > semantic-release-output.json 2> semantic-release-error.log
+          echo SCRIPT_EXIT_CODE=$? >> $GITHUB_ENV
 
       - name: Set Semantic Release Outputs
         id: sr_outputs

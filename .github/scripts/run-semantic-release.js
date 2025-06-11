@@ -1,4 +1,5 @@
-const semanticRelease = require('semantic-release');
+const _sr = require('semantic-release');
+const semanticRelease = _sr.default || _sr;
 const { Writable } = require('stream');
 
 // A stream to capture/mute semantic-release's own stdout logs.
