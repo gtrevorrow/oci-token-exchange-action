@@ -7,6 +7,14 @@ on:
       - completed
     branches: # Filters for the branch the "Build and Commit" workflow ran on
       - main
+    # NOTE: For this `workflow_run` trigger to function correctly,
+    # this `release.yml` file must be present in the default branch (`main`).
+    # If this file is introduced or changed in a PR, the changes to its
+    # `workflow_run` trigger will only take effect for workflows that complete
+    # *after* the PR is merged and this updated file is in `main`.
+    # The `Build and Commit` run triggered by the merge of the PR itself might
+    # still be processed by the `workflow_run` definition that existed in `main`
+    # *before* the merge.
 
 jobs:
   release:
