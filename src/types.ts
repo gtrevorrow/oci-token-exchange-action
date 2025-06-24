@@ -101,6 +101,11 @@ export interface ConfigInputs {
    * Name of the OCI CLI profile to create. Defaults to 'DEFAULT'.
    */
   oci_profile?: string;
+
+  /**
+   * Number of retry attempts for token exchange. Defaults to 0.
+   */
+  retry_count?: string;
 }
 
 /**

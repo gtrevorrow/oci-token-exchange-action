@@ -405,18 +405,19 @@ export async function main(): Promise<void> {
       "oci_region",
       "oci_home",
       "oci_profile",
+      "retry_count",
     ].reduce<Partial<ConfigInputs>>(
       (acc, input) => ({
         ...acc,
         [input]: platform.getInput(
           input,
-          input !== "oci_home" && input !== "oci_profile",
+          input !== "oci_home" && input !== "oci_profile" && input !== "retry_count",
         ),
       }),
       {},
     ) as ConfigInputs;
 
-    const retryCount = parseInt(platform.getInput("retry_count", false) || "0");
+    const retryCount = parseInt(config.retry_count || "0");
     if (isNaN(retryCount) || retryCount < 0) {
       throw new Error("retry_count must be a non-negative number");
     }
