@@ -148,7 +148,7 @@ export async function tokenExchangeJwtToUpst(
 }
 
 /**
- * Merge existing OCI config content by removing old profile section
+ * Merge existing OCI config content by removing old profile section ( if exists )
  * and appending a new profile block.
  */
 function mergeOciConfig(
@@ -218,7 +218,7 @@ export async function configureOciCli(
       throw new TokenExchangeError("HOME environment variable is not defined");
     }
 
-    // Sanitize file paths to prevent path injection
+    // Normalize file paths for OCI configuration
     const ociConfigDir: string = path.resolve(path.join(home, ".oci"));
     const ociConfigFile: string = path.resolve(
       path.join(ociConfigDir, "config"),
