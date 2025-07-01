@@ -79,6 +79,8 @@ npm install -g @gtrevorrow/oci-token-exchange@beta
     # oci_profile: 'DEFAULT' 
     # Optional: Number of retry attempts. Defaults to '0'.
     # retry_count: '0'
+    # Optional: specify a custom OCI CLI profile name (defaults to 'DEFAULT')
+    oci_profile: myprofile
 ```
 
 ### GitLab CI
@@ -281,6 +283,8 @@ npm install -g @gtrevorrow/oci-token-exchange
 export LOCAL_OIDC_TOKEN="your.jwt.token"
 # Optional: set custom OCI config home
 export OCI_HOME="/custom/home"
+# Optional: set custom OCI CLI profile name (defaults to 'DEFAULT')
+export OCI_PROFILE="myprofile"
 PLATFORM=local \
 OIDC_CLIENT_IDENTIFIER=your-client-identifier \
 DOMAIN_BASE_URL=https://your-domain.identity.oraclecloud.com \ # Changed from DOMAIN_URL
@@ -319,7 +323,7 @@ The action supports flexible environment variable naming to make it easier to us
 | `BITBUCKET_STEP_OIDC_TOKEN` | - | Bitbucket OIDC token (used when `PLATFORM=bitbucket` for CLI). | Yes, when platform=bitbucket |
 | `DEBUG` | - | Enable debug output (CLI env var). | No (default: `false`) |
 | `OCI_HOME` | `INPUT_OCI_HOME` | Base folder for OCI config (.oci) directory. GitHub Action input: `oci_home`. CLI env var: `OCI_HOME`. | No |
-| `OCI_PROFILE` | `INPUT_OCI_PROFILE` | Name of the OCI CLI profile to create. GitHub Action input: `oci_profile`. CLI env var: `OCI_PROFILE`. Defaults to `DEFAULT`. | No |
+| `OCI_PROFILE` | `INPUT_OCI_PROFILE` | Name of the OCI CLI profile to create. Defaults to 'DEFAULT'. | No |
 
 ### Environment Variable Handling
 
