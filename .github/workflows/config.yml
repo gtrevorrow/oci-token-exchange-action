@@ -1,6 +1,7 @@
 name: Run OCI Token Exchange Action
 
 on:
+  workflow_dispatch: # Allows manual triggering of the workflow
   push:
     branches:
       - main # Changed: Only trigger on push to main
