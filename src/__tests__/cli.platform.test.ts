@@ -49,7 +49,7 @@ describe("CLIPlatform", () => {
   describe("getOIDCToken", () => {
     test("should return token from configured environment variable", async () => {
       process.env.TEST_TOKEN_VAR = "test-token-value";
-      const token = await platform.getOIDCToken("test-audience");
+      const token = await platform.getOIDCToken(mockConfig.audience);
       expect(token).toBe("test-token-value");
     });
 

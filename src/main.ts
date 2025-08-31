@@ -195,17 +195,28 @@ function mergeOciConfig(
 }
 
 /**
- * Write data to a file and optionally set file permissions.
+ * Write data to a file atomically and optionally set file permissions.
+ * Uses a temporary file and atomic rename to prevent partial writes or corruption.
  */
 async function writeAndChmod(
   filePath: string,
   data: string,
   perms?: string,
 ): Promise<void> {
-  await fs.writeFile(filePath, data);
+  const dir = path.dirname(filePath);
+  const base = path.basename(filePath);
+  const tmpPath = path.join(dir, `.${base}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+
+  // Write to temp file with permissions if specified
+  await fs.writeFile(tmpPath, data, { mode: perms ? parseInt(perms, 8) : undefined });
+
+  // If perms not set during write, apply after
   if (perms) {
-    await fs.chmod(filePath, perms);
+    await fs.chmod(tmpPath, perms);
   }
+
+  // Atomic rename
+  await fs.rename(tmpPath, filePath);
 }
 
 export async function configureOciCli(
@@ -213,7 +224,8 @@ export async function configureOciCli(
   config: OciConfig,
 ): Promise<void> {
   try {
-    const home: string = config.ociHome || process.env.HOME || "";
+    // Determine home directory for OCI config
+    const home = config.ociHome || process.env.HOME;
     if (!home) {
       throw new TokenExchangeError("HOME environment variable is not defined");
     }
@@ -423,7 +435,9 @@ export async function main(): Promise<void> {
     }
 
     // Validate the tokenExchangeURL
-    if (!isValidUrl(`${config.domain_base_url}/oauth2/v1/token`)) {
+    const testUrl = `${config.domain_base_url}/oauth2/v1/token`;
+    // Debug throw removed; proceed with normal execution
+    if (!isValidUrl(testUrl)) {
       throw new Error("Invalid domain_base_url provided");
     }
 

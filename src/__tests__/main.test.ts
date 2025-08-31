@@ -143,22 +143,21 @@ describe("main.ts", () => {
       expect(content).toContain("session");
     });
 
-    const profileTestCases: [string, string | undefined, string][] = [
-      ["should create custom profile when specified", "CUSTOM", "[CUSTOM]"],
+    const profileTestCases: [string, string | undefined][] = [
       [
-        "should create DEFAULT profile when not specified",
+        "should create custom profile with full content when specified",
+        "CUSTOM",
+      ],
+      [
+        "should create DEFAULT profile with full content when not specified",
         undefined,
-        "[DEFAULT]",
       ],
     ];
 
     test.each(profileTestCases)(
       "%s",
-      async (
-        description: string,
-        profile: string | undefined,
-        expectedHeader: string,
-      ) => {
+      async (description: string, profile: string | undefined) => {
+        const expectedProfileName = profile || "DEFAULT";
         if (profile) {
           testConfig.ociProfile = profile;
         }
@@ -173,7 +172,24 @@ describe("main.ts", () => {
         );
         const content = configCall![1] as string;
 
-        expect(content).toContain(expectedHeader);
+        // Split config into profiles based on headers like [PROFILE_NAME]
+        const profiles = content.trim().split(/\n(?=\[)/);
+        const targetProfile = profiles.find((p) =>
+          p.startsWith(`[${expectedProfileName}]`),
+        );
+
+        expect(targetProfile).toBeDefined();
+
+        // Check each key-value pair within the target profile block
+        expect(targetProfile).toContain(`fingerprint=test-fingerprint`);
+        expect(targetProfile).toContain(`tenancy=test-tenancy`);
+        expect(targetProfile).toContain(`region=test-region`);
+        expect(targetProfile).toContain(
+          `key_file=/mock/home/.oci/${expectedProfileName}/private_key.pem`,
+        );
+        expect(targetProfile).toContain(
+          `security_token_file=/mock/home/.oci/${expectedProfileName}/session`,
+        );
       },
     );
 

@@ -79,8 +79,7 @@ npm install -g @gtrevorrow/oci-token-exchange@beta
     # oci_profile: 'DEFAULT' 
     # Optional: Number of retry attempts. Defaults to '0'.
     # retry_count: '0'
-    # Optional: specify a custom OCI CLI profile name (defaults to 'DEFAULT')
-    oci_profile: myprofile
+    
 ```
 
 ### GitLab CI
