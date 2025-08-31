@@ -115,9 +115,9 @@ export async function tokenExchangeJwtToUpst(
     return response.data; // auto wrapped in a Promise
   } catch (error) {
     const attemptCounter = currentAttempt ? currentAttempt : 0;
-    if (retryCount > 0 && retryCount >= attemptCounter) {
+    if (retryCount > 0 && attemptCounter < retryCount) {
       platform.logger.warning(
-        `Token exchange failed, retrying ... (${retryCount - attemptCounter - 1} retries left)`,
+        `Token exchange failed, retrying ... (${retryCount - attemptCounter} retries left)`,
       );
       await delay(attemptCounter + 1);
       return tokenExchangeJwtToUpst(platform, {
