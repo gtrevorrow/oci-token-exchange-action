@@ -29294,8 +29294,8 @@ async function tokenExchangeJwtToUpst(platform, { tokenExchangeURL, clientCred, 
     }
     catch (error) {
         const attemptCounter = currentAttempt ? currentAttempt : 0;
-        if (retryCount > 0 && retryCount >= attemptCounter) {
-            platform.logger.warning(`Token exchange failed, retrying ... (${retryCount - attemptCounter - 1} retries left)`);
+        if (retryCount > 0 && attemptCounter < retryCount) {
+            platform.logger.warning(`Token exchange failed, retrying ... (${retryCount - attemptCounter} retries left)`);
             await delay(attemptCounter + 1);
             return tokenExchangeJwtToUpst(platform, {
                 // Promise flattening
@@ -29319,7 +29319,7 @@ async function tokenExchangeJwtToUpst(platform, { tokenExchangeURL, clientCred, 
     }
 }
 /**
- * Merge existing OCI config content by removing old profile section
+ * Merge existing OCI config content by removing old profile section ( if exists )
  * and appending a new profile block.
  */
 function mergeOciConfig(existingRaw, profileName, profileObject) {
@@ -29359,25 +29359,37 @@ function mergeOciConfig(existingRaw, profileName, profileObject) {
     return merged + newSection;
 }
 /**
- * Write data to a file and optionally set file permissions.
+ * Write data to a file atomically and optionally set file permissions.
+ * Uses a temporary file and atomic rename to prevent partial writes or corruption.
  */
 async function writeAndChmod(filePath, data, perms) {
-    await fs.writeFile(filePath, data);
+    const dir = path.dirname(filePath);
+    const base = path.basename(filePath);
+    const tmpPath = path.join(dir, `.${base}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    // Write to temp file with permissions if specified
+    await fs.writeFile(tmpPath, data, { mode: perms ? parseInt(perms, 8) : undefined });
+    // If perms not set during write, apply after
     if (perms) {
-        await fs.chmod(filePath, perms);
+        await fs.chmod(tmpPath, perms);
     }
+    // Atomic rename
+    await fs.rename(tmpPath, filePath);
 }
 async function configureOciCli(platform, config) {
     try {
-        const home = config.ociHome || process.env.HOME || "";
+        // Determine home directory for OCI config
+        const home = config.ociHome;
         if (!home) {
-            throw new types_1.TokenExchangeError("HOME environment variable is not defined");
+            throw new types_1.TokenExchangeError("OCI home directory is not defined; set oci_home input or OCI_HOME");
         }
-        // Sanitize file paths to prevent path injection
+        // Normalize file paths for OCI configuration
         const ociConfigDir = path.resolve(path.join(home, ".oci"));
         const ociConfigFile = path.resolve(path.join(ociConfigDir, "config"));
         // Create a subfolder per profile to store keys and token
-        const profileName = config.ociProfile || "DEFAULT";
+        const profileName = config.ociProfile;
+        if (!profileName) {
+            throw new types_1.TokenExchangeError("OCI profile is not defined; set oci_profile input or OCI_PROFILE");
+        }
         // Ensure required OCI parameters are provided
         if (!config.ociTenancy) {
             throw new types_1.TokenExchangeError("OCI tenancy is not defined");
@@ -29520,16 +29532,18 @@ async function main() {
             "oci_home",
             "oci_profile",
             "retry_count",
-        ].reduce((acc, input) => ({
-            ...acc,
-            [input]: platform.getInput(input, input !== "oci_home" && input !== "oci_profile" && input !== "retry_count"),
+        ].reduce((accumulated, currentInput) => ({
+            ...accumulated,
+            [currentInput]: platform.getInput(currentInput, currentInput !== "oci_home" && currentInput !== "oci_profile" && currentInput !== "retry_count"),
         }), {});
         const retryCount = parseInt(config.retry_count || "0");
         if (isNaN(retryCount) || retryCount < 0) {
             throw new Error("retry_count must be a non-negative number");
         }
         // Validate the tokenExchangeURL
-        if (!isValidUrl(`${config.domain_base_url}/oauth2/v1/token`)) {
+        const testUrl = `${config.domain_base_url}/oauth2/v1/token`;
+        // Debug throw removed; proceed with normal execution
+        if (!isValidUrl(testUrl)) {
             throw new Error("Invalid domain_base_url provided");
         }
         const idToken = await platform.getOIDCToken(PLATFORM_CONFIGS[platformType].audience);
@@ -29550,7 +29564,10 @@ async function main() {
         });
         platform.logger.info(`OCI issued a Session Token `);
         // Resolve OCI home and profile, falling back to environment or defaults
-        const resolvedOciHome = config.oci_home || process.env.OCI_HOME;
+        const resolvedOciHome = config.oci_home || process.env.OCI_HOME || process.env.HOME;
+        if (!resolvedOciHome) {
+            throw new Error("OCI home directory is not defined; set oci_home input or OCI_HOME/HOME");
+        }
         const resolvedOciProfile = config.oci_profile || process.env.OCI_PROFILE || "DEFAULT";
         const ociConfig = {
             ociHome: resolvedOciHome,

@@ -19,6 +19,7 @@ jest.mock("fs/promises", () => {
     access: jest.fn<() => Promise<void>>(),
     mkdir: jest.fn<() => Promise<void>>(),
     chmod: jest.fn<() => Promise<void>>(),
+    rename: jest.fn<() => Promise<void>>(),
   };
 
   // Set up return values with proper typing
@@ -27,14 +28,20 @@ jest.mock("fs/promises", () => {
   mockFs.access.mockResolvedValue(undefined);
   mockFs.mkdir.mockResolvedValue(undefined);
   mockFs.chmod.mockResolvedValue(undefined);
+  mockFs.rename.mockResolvedValue(undefined);
 
   return mockFs;
 });
 
-jest.mock("path", () => ({
-  resolve: jest.fn().mockImplementation((...parts) => parts.join("/")),
-  join: jest.fn().mockImplementation((...parts) => parts.join("/")),
-}));
+jest.mock("path", () => {
+  const actualPath = jest.requireActual<typeof import("path")>("path");
+  return {
+    dirname: actualPath.dirname,
+    basename: actualPath.basename,
+    resolve: jest.fn().mockImplementation((...parts) => parts.join("/")),
+    join: jest.fn().mockImplementation((...parts) => parts.join("/")),
+  };
+});
 
 describe("main.ts", () => {
   let mockPlatform: MockPlatform;
@@ -59,6 +66,8 @@ describe("main.ts", () => {
       ociFingerprint: "test-fingerprint",
       ociTenancy: "test-tenancy",
       ociRegion: "test-region",
+      ociHome: "/mock/home",
+      ociProfile: "DEFAULT",
     };
 
     process.env.HOME = "/mock/home";
@@ -86,11 +95,12 @@ describe("main.ts", () => {
 
     const errorTestCases: [string, () => void, string][] = [
       [
-        "should throw error if HOME is undefined",
+        "should throw error if OCI home is undefined",
         () => {
-          delete process.env.HOME;
+          // Simulate missing resolved OCI home
+          delete testConfig.ociHome;
         },
-        "HOME environment variable is not defined",
+        "OCI home directory is not defined",
       ],
       [
         "should handle directory creation failure",
@@ -129,7 +139,7 @@ describe("main.ts", () => {
         fs.writeFile as jest.MockedFunction<typeof fs.writeFile>
       ).mock.calls;
       const configCall = writeCalls.find((call) =>
-        String(call[0]).endsWith("/config"),
+        String(call[0]).includes("/.config.tmp"),
       );
 
       expect(configCall).toBeDefined();
@@ -168,7 +178,7 @@ describe("main.ts", () => {
           fs.writeFile as jest.MockedFunction<typeof fs.writeFile>
         ).mock.calls;
         const configCall = writeCalls.find((call) =>
-          String(call[0]).endsWith("/config"),
+          String(call[0]).includes("/.config.tmp"),
         );
         const content = configCall![1] as string;
 
@@ -202,16 +212,18 @@ describe("main.ts", () => {
         { recursive: true },
       );
 
-      const writeCalls = (
-        fs.writeFile as jest.MockedFunction<typeof fs.writeFile>
+      const renameCalls = (
+        fs.rename as jest.MockedFunction<typeof fs.rename>
       ).mock.calls;
       expect(
-        writeCalls.some((call) =>
-          String(call[0]).includes("TESTPROF/private_key.pem"),
+        renameCalls.some((call) =>
+          String(call[1]).endsWith("TESTPROF/private_key.pem"),
         ),
       ).toBe(true);
       expect(
-        writeCalls.some((call) => String(call[0]).includes("TESTPROF/session")),
+        renameCalls.some((call) =>
+          String(call[1]).endsWith("TESTPROF/session"),
+        ),
       ).toBe(true);
     });
 
@@ -224,7 +236,7 @@ describe("main.ts", () => {
         fs.writeFile as jest.MockedFunction<typeof fs.writeFile>
       ).mock.calls;
       const configCall = writeCalls.find((call) =>
-        String(call[0]).endsWith("/config"),
+        String(call[0]).includes("/.config.tmp"),
       );
       const content = configCall![1] as string;
 
@@ -256,7 +268,7 @@ session_token_file=/home/user/.oci/DEFAULT/session
         fs.writeFile as jest.MockedFunction<typeof fs.writeFile>
       ).mock.calls;
       const configCall = writeCalls.find((call) =>
-        String(call[0]).endsWith("/config"),
+        String(call[0]).includes("/.config.tmp"),
       );
       const content = configCall![1] as string;
 
@@ -298,7 +310,7 @@ region=us-phoenix-1
         fs.writeFile as jest.MockedFunction<typeof fs.writeFile>
       ).mock.calls;
       const configCall = writeCalls.find((call) =>
-        String(call[0]).endsWith("/config"),
+        String(call[0]).includes("/.config.tmp"),
       );
       const content = configCall![1] as string;
 

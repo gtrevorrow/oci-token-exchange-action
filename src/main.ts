@@ -225,9 +225,11 @@ export async function configureOciCli(
 ): Promise<void> {
   try {
     // Determine home directory for OCI config
-    const home = config.ociHome || process.env.HOME;
+    const home = config.ociHome;
     if (!home) {
-      throw new TokenExchangeError("HOME environment variable is not defined");
+      throw new TokenExchangeError(
+        "OCI home directory is not defined; set oci_home input or OCI_HOME",
+      );
     }
 
     // Normalize file paths for OCI configuration
@@ -236,7 +238,12 @@ export async function configureOciCli(
       path.join(ociConfigDir, "config"),
     );
     // Create a subfolder per profile to store keys and token
-    const profileName = config.ociProfile || "DEFAULT";
+    const profileName = config.ociProfile;
+    if (!profileName) {
+      throw new TokenExchangeError(
+        "OCI profile is not defined; set oci_profile input or OCI_PROFILE",
+      );
+    }
     // Ensure required OCI parameters are provided
     if (!config.ociTenancy) {
       throw new TokenExchangeError("OCI tenancy is not defined");
@@ -419,11 +426,11 @@ export async function main(): Promise<void> {
       "oci_profile",
       "retry_count",
     ].reduce<Partial<ConfigInputs>>(
-      (acc, input) => ({
-        ...acc,
-        [input]: platform.getInput(
-          input,
-          input !== "oci_home" && input !== "oci_profile" && input !== "retry_count",
+      (accumulated, currentInput) => ({
+        ...accumulated,
+        [currentInput]: platform.getInput(
+          currentInput,
+          currentInput !== "oci_home" && currentInput !== "oci_profile" && currentInput !== "retry_count",
         ),
       }),
       {},
@@ -471,7 +478,13 @@ export async function main(): Promise<void> {
     platform.logger.info(`OCI issued a Session Token `);
 
     // Resolve OCI home and profile, falling back to environment or defaults
-    const resolvedOciHome = config.oci_home || process.env.OCI_HOME;
+    const resolvedOciHome =
+      config.oci_home || process.env.OCI_HOME || process.env.HOME;
+    if (!resolvedOciHome) {
+      throw new Error(
+        "OCI home directory is not defined; set oci_home input or OCI_HOME/HOME",
+      );
+    }
     const resolvedOciProfile =
       config.oci_profile || process.env.OCI_PROFILE || "DEFAULT";
     const ociConfig: OciConfig = {
