@@ -9,6 +9,7 @@ import {
 } from "@jest/globals";
 import * as fs from "fs/promises";
 import * as crypto from "crypto";
+import os from "os";
 import { configureOciCli, OciConfig } from "../main";
 import { MockPlatform } from "./test-utils";
 
@@ -34,6 +35,7 @@ jest.mock("fs/promises", () => {
 });
 
 jest.mock("path", () => {
+  // Normalize path joins in tests so expectations remain OS-agnostic
   const actualPath = jest.requireActual<typeof import("path")>("path");
   return {
     dirname: actualPath.dirname,
@@ -47,6 +49,7 @@ describe("main.ts", () => {
   let mockPlatform: MockPlatform;
   let testConfig: OciConfig;
   let testKeyPair: crypto.KeyPairSyncResult<string, string>;
+  let originalHome: string | undefined;
 
   beforeEach(() => {
     mockPlatform = new MockPlatform();
@@ -70,13 +73,19 @@ describe("main.ts", () => {
       ociProfile: "DEFAULT",
     };
 
+    originalHome = process.env.HOME;
     process.env.HOME = "/mock/home";
     jest.clearAllMocks();
   });
 
   afterEach(() => {
+    jest.restoreAllMocks();
     jest.resetModules();
-    delete process.env.HOME;
+    if (typeof originalHome === "string") {
+      process.env.HOME = originalHome;
+    } else {
+      delete process.env.HOME;
+    }
   });
 
   describe("configureOciCli", () => {
@@ -86,6 +95,7 @@ describe("main.ts", () => {
       expect(fs.mkdir).toHaveBeenCalledWith(expect.stringContaining(".oci"), {
         recursive: true,
       });
+      // configureOciCli writes config, key, session, and public key artifacts
       expect(fs.writeFile).toHaveBeenCalledTimes(4);
       expect(fs.chmod).toHaveBeenCalledWith(
         expect.stringContaining("private_key.pem"),
@@ -95,10 +105,11 @@ describe("main.ts", () => {
 
     const errorTestCases: [string, () => void, string][] = [
       [
-        "should throw error if OCI home is undefined",
+        "should throw error if OCI home is undefined and homedir cannot be resolved",
         () => {
           // Simulate missing resolved OCI home
           delete testConfig.ociHome;
+          jest.spyOn(os, "homedir").mockReturnValue("");
         },
         "OCI home directory is not defined",
       ],
@@ -131,6 +142,15 @@ describe("main.ts", () => {
         );
       },
     );
+
+    it("should fallback to os.homedir when OCI home input is empty", async () => {
+      testConfig.ociHome = "";
+      jest.spyOn(os, "homedir").mockReturnValue("/os/home");
+
+      await configureOciCli(mockPlatform, testConfig);
+
+      expect(os.homedir).toHaveBeenCalled();
+    });
 
     it("should write correct OCI config content", async () => {
       await configureOciCli(mockPlatform, testConfig);
