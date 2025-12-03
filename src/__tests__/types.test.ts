@@ -3,10 +3,12 @@
  * Licensed under the Universal Permissive License v1.0 as shown at https://oss.oracle.com/licenses/upl.
  */
 
-import { jest, expect, describe, test, beforeEach } from "@jest/globals";
+import { jest, expect, describe, test, beforeEach, afterEach } from "@jest/globals";
 import { resolveInput } from "../platforms/types";
 
 describe("resolveInput", () => {
+  const restoredValues: Record<string, string | undefined> = {};
+
   beforeEach(() => {
     // Clear all environment variables before each test
     Object.keys(process.env).forEach((key) => {
@@ -16,9 +18,21 @@ describe("resolveInput", () => {
         key.startsWith("OIDC_") ||
         ["SOME_VAR", "OCI_HOME", "TEST_VAR", "MY_TEST_VAR"].includes(key)
       ) {
+        restoredValues[key] = process.env[key];
         delete process.env[key];
       }
     });
+  });
+
+  afterEach(() => {
+    Object.entries(restoredValues).forEach(([key, value]) => {
+      if (typeof value === "string") {
+        process.env[key] = value;
+      } else {
+        delete process.env[key];
+      }
+    });
+    Object.keys(restoredValues).forEach((key) => delete restoredValues[key]);
   });
 
   test("should resolve environment variables with proper priority order", () => {
