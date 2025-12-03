@@ -12,10 +12,14 @@ import { PlatformConfig } from "../platforms/types";
 describe("CLIPlatform", () => {
   let mockConfig: PlatformConfig;
   let platform: CLIPlatform;
+  let originalEnv: NodeJS.ProcessEnv;
 
   beforeEach(() => {
-    // Reset environment before each test
-    process.env = {};
+    if (!originalEnv) {
+      originalEnv = process.env;
+    }
+    // Reset environment while preserving original values for other suites
+    process.env = { ...originalEnv };
 
     mockConfig = {
       audience: "test-audience",
@@ -26,6 +30,7 @@ describe("CLIPlatform", () => {
   });
 
   afterEach(() => {
+    process.env = originalEnv;
     jest.resetAllMocks();
   });
 
