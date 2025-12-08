@@ -4,6 +4,7 @@
  */
 import * as fs from "fs/promises";
 import * as path from "path";
+import os from "os";
 import crypto from "crypto";
 import axios from "axios";
 import { Platform, PlatformConfig } from "./platforms/types";
@@ -225,7 +226,7 @@ export async function configureOciCli(
 ): Promise<void> {
   try {
     // Determine home directory for OCI config
-    const home = config.ociHome;
+    const home = config.ociHome || os.homedir();
     if (!home) {
       throw new TokenExchangeError(
         "OCI home directory is not defined; set oci_home input or OCI_HOME",
@@ -251,7 +252,7 @@ export async function configureOciCli(
     if (!config.ociRegion) {
       throw new TokenExchangeError("OCI region is not defined");
     }
-    // Create a subfolder per profile to store keys and token
+
     const profileDir: string = path.resolve(
       path.join(ociConfigDir, profileName),
     );
@@ -479,7 +480,7 @@ export async function main(): Promise<void> {
 
     // Resolve OCI home and profile, falling back to environment or defaults
     const resolvedOciHome =
-      config.oci_home || process.env.OCI_HOME || process.env.HOME;
+      config.oci_home || process.env.OCI_HOME || process.env.HOME || os.homedir();
     if (!resolvedOciHome) {
       throw new Error(
         "OCI home directory is not defined; set oci_home input or OCI_HOME/HOME",
