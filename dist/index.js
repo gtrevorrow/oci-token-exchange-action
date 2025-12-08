@@ -30281,6 +30281,7 @@ exports.main = main;
  */
 const fs = __importStar(__nccwpck_require__(3292));
 const path = __importStar(__nccwpck_require__(1017));
+const os_1 = __importDefault(__nccwpck_require__(2037));
 const crypto_1 = __importDefault(__nccwpck_require__(6113));
 const axios_1 = __importDefault(__nccwpck_require__(8757));
 const github_1 = __nccwpck_require__(246);
@@ -30449,7 +30450,7 @@ async function writeAndChmod(filePath, data, perms) {
 async function configureOciCli(platform, config) {
     try {
         // Determine home directory for OCI config
-        const home = config.ociHome;
+        const home = config.ociHome || os_1.default.homedir();
         if (!home) {
             throw new types_1.TokenExchangeError("OCI home directory is not defined; set oci_home input or OCI_HOME");
         }
@@ -30468,7 +30469,6 @@ async function configureOciCli(platform, config) {
         if (!config.ociRegion) {
             throw new types_1.TokenExchangeError("OCI region is not defined");
         }
-        // Create a subfolder per profile to store keys and token
         const profileDir = path.resolve(path.join(ociConfigDir, profileName));
         const ociPrivateKeyFile = path.resolve(path.join(profileDir, "private_key.pem"));
         const ociPublicKeyFile = path.resolve(path.join(profileDir, "public_key.pem"));
@@ -30635,7 +30635,7 @@ async function main() {
         });
         platform.logger.info(`OCI issued a Session Token `);
         // Resolve OCI home and profile, falling back to environment or defaults
-        const resolvedOciHome = config.oci_home || process.env.OCI_HOME || process.env.HOME;
+        const resolvedOciHome = config.oci_home || process.env.OCI_HOME || process.env.HOME || os_1.default.homedir();
         if (!resolvedOciHome) {
             throw new Error("OCI home directory is not defined; set oci_home input or OCI_HOME/HOME");
         }
