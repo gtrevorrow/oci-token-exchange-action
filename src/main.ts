@@ -4,6 +4,7 @@
  */
 import * as fs from "fs/promises";
 import * as path from "path";
+import os from "os";
 import crypto from "crypto";
 import axios from "axios";
 import { Platform, PlatformConfig } from "./platforms/types";
@@ -115,9 +116,9 @@ export async function tokenExchangeJwtToUpst(
     return response.data; // auto wrapped in a Promise
   } catch (error) {
     const attemptCounter = currentAttempt ? currentAttempt : 0;
-    if (retryCount > 0 && retryCount >= attemptCounter) {
+    if (retryCount > 0 && attemptCounter < retryCount) {
       platform.logger.warning(
-        `Token exchange failed, retrying ... (${retryCount - attemptCounter - 1} retries left)`,
+        `Token exchange failed, retrying ... (${retryCount - attemptCounter} retries left)`,
       );
       await delay(attemptCounter + 1);
       return tokenExchangeJwtToUpst(platform, {
@@ -195,17 +196,28 @@ function mergeOciConfig(
 }
 
 /**
- * Write data to a file and optionally set file permissions.
+ * Write data to a file atomically and optionally set file permissions.
+ * Uses a temporary file and atomic rename to prevent partial writes or corruption.
  */
 async function writeAndChmod(
   filePath: string,
   data: string,
   perms?: string,
 ): Promise<void> {
-  await fs.writeFile(filePath, data);
+  const dir = path.dirname(filePath);
+  const base = path.basename(filePath);
+  const tmpPath = path.join(dir, `.${base}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+
+  // Write to temp file with permissions if specified
+  await fs.writeFile(tmpPath, data, { mode: perms ? parseInt(perms, 8) : undefined });
+
+  // If perms not set during write, apply after
   if (perms) {
-    await fs.chmod(filePath, perms);
+    await fs.chmod(tmpPath, perms);
   }
+
+  // Atomic rename
+  await fs.rename(tmpPath, filePath);
 }
 
 export async function configureOciCli(
@@ -213,9 +225,12 @@ export async function configureOciCli(
   config: OciConfig,
 ): Promise<void> {
   try {
-    const home: string = config.ociHome || process.env.HOME || "";
+    // Determine home directory for OCI config
+    const home = config.ociHome || os.homedir();
     if (!home) {
-      throw new TokenExchangeError("HOME environment variable is not defined");
+      throw new TokenExchangeError(
+        "OCI home directory is not defined; set oci_home input or OCI_HOME",
+      );
     }
 
     // Normalize file paths for OCI configuration
@@ -224,7 +239,12 @@ export async function configureOciCli(
       path.join(ociConfigDir, "config"),
     );
     // Create a subfolder per profile to store keys and token
-    const profileName = config.ociProfile || "DEFAULT";
+    const profileName = config.ociProfile;
+    if (!profileName) {
+      throw new TokenExchangeError(
+        "OCI profile is not defined; set oci_profile input or OCI_PROFILE",
+      );
+    }
     // Ensure required OCI parameters are provided
     if (!config.ociTenancy) {
       throw new TokenExchangeError("OCI tenancy is not defined");
@@ -232,7 +252,7 @@ export async function configureOciCli(
     if (!config.ociRegion) {
       throw new TokenExchangeError("OCI region is not defined");
     }
-    // Create a subfolder per profile to store keys and token
+
     const profileDir: string = path.resolve(
       path.join(ociConfigDir, profileName),
     );
@@ -407,11 +427,11 @@ export async function main(): Promise<void> {
       "oci_profile",
       "retry_count",
     ].reduce<Partial<ConfigInputs>>(
-      (acc, input) => ({
-        ...acc,
-        [input]: platform.getInput(
-          input,
-          input !== "oci_home" && input !== "oci_profile" && input !== "retry_count",
+      (accumulated, currentInput) => ({
+        ...accumulated,
+        [currentInput]: platform.getInput(
+          currentInput,
+          currentInput !== "oci_home" && currentInput !== "oci_profile" && currentInput !== "retry_count",
         ),
       }),
       {},
@@ -423,7 +443,9 @@ export async function main(): Promise<void> {
     }
 
     // Validate the tokenExchangeURL
-    if (!isValidUrl(`${config.domain_base_url}/oauth2/v1/token`)) {
+    const testUrl = `${config.domain_base_url}/oauth2/v1/token`;
+    // Debug throw removed; proceed with normal execution
+    if (!isValidUrl(testUrl)) {
       throw new Error("Invalid domain_base_url provided");
     }
 
@@ -457,7 +479,13 @@ export async function main(): Promise<void> {
     platform.logger.info(`OCI issued a Session Token `);
 
     // Resolve OCI home and profile, falling back to environment or defaults
-    const resolvedOciHome = config.oci_home || process.env.OCI_HOME;
+    const resolvedOciHome =
+      config.oci_home || process.env.OCI_HOME || process.env.HOME || os.homedir();
+    if (!resolvedOciHome) {
+      throw new Error(
+        "OCI home directory is not defined; set oci_home input or OCI_HOME/HOME",
+      );
+    }
     const resolvedOciProfile =
       config.oci_profile || process.env.OCI_PROFILE || "DEFAULT";
     const ociConfig: OciConfig = {

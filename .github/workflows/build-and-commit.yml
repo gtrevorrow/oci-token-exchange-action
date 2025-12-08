@@ -6,8 +6,8 @@ on:
       - main
       - develop
   pull_request: # Add this
-    branches:   # Add this
-      - main    # Add this
+    branches: # Add this
+      - main # Add this
       - develop # Add this
 
 jobs:
@@ -16,31 +16,40 @@ jobs:
     permissions:
       contents: write # Add this line to grant write permissions
     steps:
-    # 1. Checks out your repository code
-    - uses: actions/checkout@v4
-    
-    # 2. Sets up Node.js environment
-    - uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-    
-    # 3. Installs dependencies (including @vercel/ncc for bundling)
-    - run: npm ci
-    
-    # 4. Builds your action using ncc (creates dist/main.js and dist/cli.js)
-    - run: npm run build
-    
-    # Run tests
-    - name: Run tests
-      run: npm test
-      
-    # 5. Commits the built files back to the repository
-    # Only run this step on push events, not on pull_request events
-    - name: Commit built files
-      if: github.event_name == 'push' 
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add dist/                                    # Stage the built files
-        git diff --staged --quiet || git commit -m "chore: Build dist files [skip ci]"  # Only commit if changes exist, add [skip ci]
-        git push
+      # 1. Checks out your repository code
+      - uses: actions/checkout@v4
+
+      # 2. Sets up Node.js environment
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # 3. Installs dependencies (including @vercel/ncc for bundling)
+      - run: npm ci
+
+      # 4. Builds your action bundles (dist/main.js, dist/index.js, dist/cli.js)
+      - run: npm run build
+
+      # Run tests
+      - name: Run tests
+        run: npm test
+
+      # 5. Ensure dist/ matches the checked-in artifacts on pull requests
+      - name: Verify dist artifacts are committed
+        if: github.event_name == 'pull_request'
+        run: |
+          if ! git diff --stat --exit-code dist; then
+            echo "::error::dist/ is out of date. Run 'npm run build' and commit the results."
+            exit 1
+          fi
+
+      # 6. Commits the built files back to the repository
+      # Only run this step on push events, not on pull_request events
+      - name: Commit built files
+        if: github.event_name == 'push'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add dist/                                    # Stage the built files
+          git diff --staged --quiet || git commit -m "chore: Build dist files [skip ci]"  # Only commit if changes exist, add [skip ci]
+          git push

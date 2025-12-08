@@ -5,10 +5,8 @@
 - [Opening issues](#opening-issues)
 - [Pre-requisites for code or documentation submissions](#pre-requisites-for-code-or-documentation-submissions)
 - [Commit messages](#commit-messages)
-- [Build, Test, Versioning and Release Process](#build-test-and-versioning)
-  - [Build & Test](#build--test)
-  - [Versioning & Release](#versioning--release)
-    - [Release Types](#release-types)
+- [Versioning & Release](#versioning--release)
+  - [Release Types](#release-types)
 - [Development and Release Workflow](#development-and-release-workflow)
 - [Pull request process](#pull-request-process)
 - [Code of conduct](#code-of-conduct)
@@ -94,33 +92,13 @@ husky - commit-msg hook exited with code 1 (error)
 
 If you have any questions, please check the Conventional Commits FAQ, start a discussion or open an issue.
 
-## Build, Test and Versioning
-
-This project uses an automated build and release system powered by TypeScript, Jest, and [semantic-release](https://github.com/semantic-release/semantic-release).
-
-### Build & Test
-
-- **Build:**  
-  Run `npm run build` to compile TypeScript sources to `dist/`.
-- **Lint & Format:**  
-  Run `npm run lint` and `npm run format:check` to check code style.
-  To automatically fix formatting issues, run `npm run format:write`.
-- **Test:**  
-  Run `npm test` to execute all Jest tests.
-
-**Automated Build Process:**  
-The repository includes a `build-and-commit.yml` workflow that automatically builds and commits the `dist/` files whenever changes are pushed to `main`. This ensures that:
-- The bundled action files (`dist/main.js`, `dist/cli.js`) are always up-to-date
-- Contributors only need to modify source files in `src/` 
-- Users referencing `@main` always get working, built code
-
-### Versioning & Release
+## Versioning & Release
 
 This project follows [Semantic Versioning](https://semver.org/) and uses [semantic-release](https://github.com/semantic-release/semantic-release) (configured via `.releaserc.json`) for automated version management and publishing.
 
-#### Release Types
+### Release Types
 
-- **MAJOR:** Breaking changes (`feat!` or `BREAKING CHANGE:` in commit)
+- **MAJOR:** Breaking changes (`feat!`, `fix!`, etc. or `BREAKING CHANGE:` in commit footer)
 - **MINOR:** New features (`feat`)
 - **PATCH:** Bug fixes and improvements (`fix`, `perf`, `refactor`)
 - **No Release:** `docs`, `style`, `test`, `chore`, `build`, `ci` do not trigger a release
@@ -133,10 +111,14 @@ The project follows a structured process from development to production, using a
    - Create a feature branch from `develop`:  
      `git checkout -b feature/my-feature`
    - Make your changes
-   - Run tests locally: `npm test`
+   - **Lint & Format:** `npm run lint` and `npm run format:check` - Check code style  
+     To automatically fix formatting issues: `npm run format:write`
+   - **Test:** `npm test` - Execute all Jest tests
+   - **IMPORTANT: Rebuild the action bundles** (this keeps `dist/` in sync): `npm run build`
    - Commit changes: `git commit -m "feat: add new feature"` following the [Conventional Commits](https://www.conventionalcommits.org/) format
    - Push to your feature branch: `git push origin feature/my-feature`
-   - **Note:** You do not need to run `npm run build` manually - the automated workflow will handle building and committing `dist/` files.
+
+**Note**: The project uses Prettier with VS Code-compatible settings (`.prettierrc.json`) for consistent formatting.
 
 2. **Integration to Develop:**
    - Create a [pull request](#pull-request-process) targeting the `develop` branch.

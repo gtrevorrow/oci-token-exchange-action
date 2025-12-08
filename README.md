@@ -79,8 +79,7 @@ npm install -g @gtrevorrow/oci-token-exchange@beta
     # oci_profile: 'DEFAULT' 
     # Optional: Number of retry attempts. Defaults to '0'.
     # retry_count: '0'
-    # Optional: specify a custom OCI CLI profile name (defaults to 'DEFAULT')
-    oci_profile: myprofile
+    
 ```
 
 ### GitLab CI
@@ -118,7 +117,7 @@ deploy:
       cd dist &&
       PLATFORM=gitlab \
       OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \
-      DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \ # Changed from DOMAIN_URL
+  DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \
       OCI_TENANCY=${OCI_TENANCY} \
       OCI_REGION=${OCI_REGION} \
       RETRY_COUNT=3 \
@@ -164,7 +163,7 @@ deploy_npm:
     - |
       PLATFORM=gitlab \
       OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \
-      DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \ # Changed from DOMAIN_URL
+  DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \
       OCI_TENANCY=${OCI_TENANCY} \
       OCI_REGION=${OCI_REGION} \
       RETRY_COUNT=3 \
@@ -214,7 +213,7 @@ pipelines:
             cd dist &&
             export PLATFORM=bitbucket &&
             export OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} &&
-            export DOMAIN_BASE_URL=${DOMAIN_BASE_URL} && # Changed from DOMAIN_URL
+            export DOMAIN_BASE_URL=${DOMAIN_BASE_URL} &&
             export OCI_TENANCY=${OCI_TENANCY} &&
             export OCI_REGION=${OCI_REGION} &&
             export RETRY_COUNT=3
@@ -257,7 +256,7 @@ pipelines:
           - >
             export PLATFORM=bitbucket &&
             export OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} &&
-            export DOMAIN_BASE_URL=${DOMAIN_BASE_URL} && # Changed from DOMAIN_URL
+            export DOMAIN_BASE_URL=${DOMAIN_BASE_URL} &&
             export OCI_TENANCY=${OCI_TENANCY} &&
             export OCI_REGION=${OCI_REGION} &&
             export RETRY_COUNT=3
@@ -287,7 +286,7 @@ export OCI_HOME="/custom/home"
 export OCI_PROFILE="myprofile"
 PLATFORM=local \
 OIDC_CLIENT_IDENTIFIER=your-client-identifier \
-DOMAIN_BASE_URL=https://your-domain.identity.oraclecloud.com \ # Changed from DOMAIN_URL
+DOMAIN_BASE_URL=https://your-domain.identity.oraclecloud.com \
 OCI_TENANCY=your-tenancy-ocid \
 OCI_REGION=your-region \
 oci-token-exchange
@@ -298,13 +297,20 @@ oci os ns get
 
 ### Debugging
 
-To enable detailed logging, set the `DEBUG` environment variable to `true`:
+**GitHub Actions**
+
+- Add a repository or environment secret named `ACTIONS_STEP_DEBUG` with the value `true`, then reference it in the workflow (`env: ACTIONS_STEP_DEBUG: ${{ secrets.ACTIONS_STEP_DEBUG }}`). This enables the built-in debug channel that the action checks via `core.isDebug()`.
+- Optional: set `ACTIONS_RUNNER_DEBUG` to `true` (also via secret) when you need runner-level tracing.
+
+**CLI / other runners**
+
+Set the `DEBUG` environment variable to `true` before invoking the tool:
 
 ```bash
 export DEBUG=true
 ```
 
-This will log additional information, such as token exchange requests and responses, to help with troubleshooting.
+This produces verbose logs (requests/responses, file paths, etc.) to simplify troubleshooting.
 
 ## Environment Variables / Github Secrets 
 

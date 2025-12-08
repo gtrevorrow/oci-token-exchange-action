@@ -1,4 +1,4 @@
-import { jest, expect, describe, it, test, beforeEach } from "@jest/globals";
+import { jest, expect, describe, it, test, beforeEach, beforeAll, afterAll } from "@jest/globals";
 import axios from "axios";
 import {
   TokenExchangeConfig,
@@ -14,16 +14,24 @@ jest.mock("axios");
 // Use jest.Mocked for axios to get correct typings
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
-// Don't mock the whole module, just mock the delay function directly since we're testing tokenExchangeJwtToUpst
-// Mock delay by immediately invoking the callback and returning a dummy Timeout
-jest.spyOn(global, "setTimeout").mockImplementation((callback: () => void) => {
-  callback();
-  return {} as unknown as NodeJS.Timeout;
-});
-
 describe("tokenExchangeJwtToUpst", () => {
   let mockPlatform: MockPlatform;
   let testConfig: TokenExchangeConfig;
+  let setTimeoutSpy: jest.SpiedFunction<typeof global.setTimeout>;
+
+  beforeAll(() => {
+    // Mock delay by immediately invoking the callback and returning a dummy Timeout
+    setTimeoutSpy = jest
+      .spyOn(global, "setTimeout")
+      .mockImplementation((callback: () => void) => {
+        callback();
+        return {} as unknown as NodeJS.Timeout;
+      });
+  });
+
+  afterAll(() => {
+    setTimeoutSpy.mockRestore();
+  });
 
   beforeEach(() => {
     mockPlatform = new MockPlatform();
