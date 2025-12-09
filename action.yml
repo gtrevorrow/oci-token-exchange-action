@@ -1,35 +1,35 @@
-name: 'OCI Token Exchange'
-description: 'Exchanges OIDC tokens for OCI session tokens and configures OCI CLI.'
-author: 'gtrevorrow'
+name: "OCI Token Exchange"
+description: "Exchanges OIDC tokens for OCI session tokens and configures OCI CLI."
+author: "gtrevorrow"
 
 inputs:
   ci_platform:
     description: "CI platform. Defaults to 'github'. Other values: 'gitlab', 'bitbucket', 'local'."
     required: false
-    default: 'github'
+    default: "github"
   oidc_client_identifier:
-    description: 'OIDC client identifier (client_id:client_secret) for the confidential OAuth application.'
+    description: "OIDC client identifier (client_id:client_secret) for the confidential OAuth application."
     required: true
   domain_base_url:
-    description: 'Base URL of the OCI Identity Domain (e.g., https://idcs-xxxxxxxxxxxx.identity.oraclecloud.com).'
+    description: "Base URL of the OCI Identity Domain (e.g., https://idcs-xxxxxxxxxxxx.identity.oraclecloud.com)."
     required: true
   oci_tenancy:
-    description: 'OCI tenancy OCID.'
+    description: "OCI tenancy OCID."
     required: true
   oci_region:
-    description: 'OCI region identifier (e.g., us-ashburn-1).'
+    description: "OCI region identifier (e.g., us-ashburn-1)."
     required: true
   oci_home:
-    description: 'Optional: Custom base folder for OCI config (.oci) directory. Defaults to ~/.oci'
+    description: "Optional: Custom base folder for OCI config (.oci) directory. Defaults to ~/.oci"
     required: false
   oci_profile:
     description: "Optional: Name of the OCI CLI profile to create. Defaults to 'DEFAULT'."
     required: false
-    default: 'DEFAULT'
+    default: "DEFAULT"
   retry_count:
     description: "Optional: Number of retry attempts for token exchange. Defaults to '0'."
     required: false
-    default: '0'
+    default: "0"
 
 outputs:
   oci_config_path:
@@ -40,9 +40,9 @@ outputs:
     description: "The path to the generated private key used for the session."
 
 runs:
-  using: 'node20'
-  main: 'dist/action/index.js'
+  using: "node20"
+  main: "dist/action/index.js"
 
 branding:
-  icon: 'shield'
-  color: 'orange'
+  icon: "shield"
+  color: "orange"
