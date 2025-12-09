@@ -41,7 +41,7 @@ outputs:
 
 runs:
   using: 'node20'
-  main: 'dist/main.js'
+  main: 'dist/action/index.js'
 
 branding:
   icon: 'shield'

@@ -31,7 +31,7 @@
         "node": ">=20"
     },
     "scripts": {
-        "build:action": "ncc build src/main.ts -o dist --source-map --license licenses.txt",
+        "build:action": "ncc build src/main.ts -o dist/action --source-map --license licenses.txt",
         "build:library": "ncc build src/index.ts -o dist --source-map --license licenses.txt",
         "build:cli": "ncc build src/cli.ts -o dist --source-map --license licenses.txt --target es2022",
         "build": "npm run build:action && npm run build:library && npm run build:cli",
