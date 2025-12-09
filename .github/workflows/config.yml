@@ -1,6 +1,13 @@
 name: Run OCI Token Exchange Action
 
 on:
+  push:
+    branches:
+      - develop
+      - main
+  pull_request:
+    branches:
+      - develop
   workflow_dispatch: # Allows manual triggering of the workflow
 
 jobs:
@@ -9,57 +16,57 @@ jobs:
     # Skip this job for dependabot PRs since they don't have access to secrets
     if: github.actor != 'dependabot[bot]'
     permissions:
-        # Only need read access to repository contents and write for ID tokens
-        contents: 'read'
-        id-token: 'write'
+      # Only need read access to repository contents and write for ID tokens
+      contents: "read"
+      id-token: "write"
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4.1.7
+      - name: Checkout repository
+        uses: actions/checkout@v4.1.7
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4.0.3
-      with:
-        node-version: '20'
+      - name: Set up Node.js
+        uses: actions/setup-node@v4.0.3
+        with:
+          node-version: "20"
 
-    - name: Install OCI CLI
-      run: |
-        curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh | bash -s -- --accept-all-defaults
-        echo "$HOME/bin" >> $GITHUB_PATH
-      shell: bash
+      - name: Install OCI CLI
+        run: |
+          curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh | bash -s -- --accept-all-defaults
+          echo "$HOME/bin" >> $GITHUB_PATH
+        shell: bash
 
-    - name: Run OCI Token Exchange Action
-      uses: ./ # Use the action from the current checkout
-      with:
-        oidc_client_identifier: ${{secrets.OIDC_CLIENT_IDENTIFIER}}
-        domain_base_url: ${{vars.DOMAIN_BASE_URL}}
-        oci_tenancy: ${{vars.OCI_TENANCY}}
-        oci_region: ${{vars.OCI_REGION}}
-        oci_home: ${{ github.workspace }} # Optional
-      
-        # retry_count: '7' # Optional: Add if needed for testing
-        # ci_platform: 'github' # Optional: Add if needed for testing, defaults to github
+      - name: Run OCI Token Exchange Action
+        uses: ./ # Use the action from the current checkout
+        with:
+          oidc_client_identifier: ${{secrets.OIDC_CLIENT_IDENTIFIER}}
+          domain_base_url: ${{vars.DOMAIN_BASE_URL}}
+          oci_tenancy: ${{vars.OCI_TENANCY}}
+          oci_region: ${{vars.OCI_REGION}}
+          oci_home: ${{ github.workspace }} # Optional
 
-    - name: Run OCI CLI Command
-      shell: bash
-      run: |
-        oci --auth security_token --config-file ${{ github.workspace }}/.oci/config os ns get
+          # retry_count: '7' # Optional: Add if needed for testing
+          # ci_platform: 'github' # Optional: Add if needed for testing, defaults to github
 
-    - name: Run OCI Token Exchange Action again
-      uses: ./ # Use the action from the current checkout
-      with:
-        oidc_client_identifier: ${{secrets.OIDC_CLIENT_IDENTIFIER}}
-        domain_base_url: ${{vars.DOMAIN_BASE_URL}}
-        oci_tenancy: ${{vars.OCI_TENANCY}}
-        oci_region: ${{vars.OCI_REGION}}
-        oci_home: ${{ github.workspace }} # Optional
-        oci_profile: 'GORDON' # Optional: Add if needed for testing
-        # retry_count: '7' # Optional: Add if needed for testing
-        # ci_platform: 'github' # Optional: Add if needed for testing, defaults to github
-  
-    - name: Run OCI CLI Command again
-      shell: bash
-      run: |
-        oci --auth security_token --profile GORDON --config-file ${{ github.workspace }}/.oci/config os ns get
+      - name: Run OCI CLI Command
+        shell: bash
+        run: |
+          oci --auth security_token --config-file ${{ github.workspace }}/.oci/config os ns get
+
+      - name: Run OCI Token Exchange Action again
+        uses: ./ # Use the action from the current checkout
+        with:
+          oidc_client_identifier: ${{secrets.OIDC_CLIENT_IDENTIFIER}}
+          domain_base_url: ${{vars.DOMAIN_BASE_URL}}
+          oci_tenancy: ${{vars.OCI_TENANCY}}
+          oci_region: ${{vars.OCI_REGION}}
+          oci_home: ${{ github.workspace }} # Optional
+          oci_profile: "GORDON" # Optional: Add if needed for testing
+          # retry_count: '7' # Optional: Add if needed for testing
+          # ci_platform: 'github' # Optional: Add if needed for testing, defaults to github
+
+      - name: Run OCI CLI Command again
+        shell: bash
+        run: |
+          oci --auth security_token --profile GORDON --config-file ${{ github.workspace }}/.oci/config os ns get
 
   # Add a separate job for Dependabot that only runs basic checks
   dependabot-check:
@@ -68,19 +75,19 @@ jobs:
     permissions:
       contents: read
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4.1.7
+      - name: Checkout repository
+        uses: actions/checkout@v4.1.7
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4.0.3
-      with:
-        node-version: '20'
+      - name: Set up Node.js
+        uses: actions/setup-node@v4.0.3
+        with:
+          node-version: "20"
 
-    - name: Install dependencies
-      run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-    - name: Run tests
-      run: npm test
+      - name: Run tests
+        run: npm test
 
-    - name: Build project
-      run: npm run build
+      - name: Build project
+        run: npm run build
