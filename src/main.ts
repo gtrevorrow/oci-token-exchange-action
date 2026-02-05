@@ -331,6 +331,12 @@ export async function configureOciCli(
         "OCI profile is not defined; set oci_profile input or OCI_PROFILE",
       );
     }
+    // Validate profile name to prevent path traversal via file paths.
+    if (!/^[A-Za-z0-9_-]+$/.test(profileName)) {
+      throw new TokenExchangeError(
+        "Invalid oci_profile. Allowed characters: letters, numbers, underscore, hyphen.",
+      );
+    }
     // Ensure required OCI parameters are provided
     if (!config.ociTenancy) {
       throw new TokenExchangeError("OCI tenancy is not defined");
