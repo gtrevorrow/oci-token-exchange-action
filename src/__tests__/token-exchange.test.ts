@@ -104,6 +104,52 @@ describe("tokenExchangeJwtToUpst", () => {
     );
   });
 
+  it("should redact tokens in debug logs", async () => {
+    const jwtHeader = Buffer.from(
+      JSON.stringify({ alg: "RS256", typ: "JWT" }),
+    ).toString("base64");
+    const jwtPayload = Buffer.from(
+      JSON.stringify({
+        iss: "https://issuer.example.com",
+        aud: "https://cloud.oracle.com",
+        exp: 1700000000,
+        iat: 1699990000,
+        sub: "user@example.com",
+      }),
+    ).toString("base64");
+    const jwtToken = `${jwtHeader}.${jwtPayload}.signature`;
+
+    testConfig.subjectToken = jwtToken;
+
+    mockedAxios.post.mockResolvedValueOnce({
+      data: { token: jwtToken },
+    });
+
+    await tokenExchangeJwtToUpst(mockPlatform, testConfig);
+
+    const debugCalls = (mockPlatform.logger.debug as jest.Mock).mock.calls.map(
+      (call) => String(call[0]),
+    );
+
+    const requestLog = debugCalls.find((message) =>
+      message.includes("Token Exchange Request Data (redacted)"),
+    );
+    expect(requestLog).toBeDefined();
+    expect(requestLog).not.toContain(jwtToken);
+
+    const requestPayloadJson = requestLog?.split(": ").slice(1).join(": ");
+    const requestPayload = JSON.parse(requestPayloadJson || "{}");
+    expect(requestPayload.subject_token.kind).toBe("jwt");
+    expect(requestPayload.subject_token.signature_present).toBe(true);
+    expect(requestPayload.subject_token.length).toBe(jwtToken.length);
+
+    const responseLog = debugCalls.find((message) =>
+      message.includes("Token Exchange Response (redacted)"),
+    );
+    expect(responseLog).toBeDefined();
+    expect(responseLog).not.toContain(jwtToken);
+  });
+
   it("should retry on failure if retries are available", async () => {
     // Setup axios mock to fail on first call then succeed
     mockedAxios.post
