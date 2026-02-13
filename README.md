@@ -33,12 +33,18 @@ A tool to exchange OIDC tokens for [OCI session tokens](https://docs.oracle.com/
 
 ### As GitHub Action
 
-To use this tool as a step in your GitHub Actions workflow, reference it using a specific Git tag or branch. The following options are available, managed automatically by the release workflow:
+To use this tool as a step in your GitHub Actions workflow, reference it using a specific Git tag, commit SHA, or branch. The following options are available, managed automatically by the release workflow:
 
 *   **`@vX` (e.g., `@v1`) - Recommended:** Points to the latest stable release within a specific major version (e.g., the latest `v1.x.y`). This tag is automatically updated upon new releases, allowing you to receive compatible updates and bug fixes without breaking changes.
 *   **`@vX.Y.Z` (e.g., `@v1.1.0`) - Specific Version:** Pins the action to an exact release version created by semantic-release. Use this if you need absolute stability and want to control updates manually.
+*   **`@<full-commit-sha>` - Highest Integrity Pinning:** Pins to a single immutable commit. Use this for high-assurance production pipelines and strict supply-chain controls.
 *   **`@latest` - Latest Release:** Points to the most recent release. This tag is automatically updated upon new releases by the release workflow.
 *   **`@main` - Bleeding Edge (Not Recommended):** Runs the action directly from the latest commit on the `main` branch. This is unstable and should generally be avoided in production workflows.
+
+Pinning guidance:
+*   Use `@<full-commit-sha>` for regulated or high-risk production environments where no automatic movement is acceptable.
+*   Use `@vX.Y.Z` when you want stable behavior with controlled, manual upgrades.
+*   Use `@vX` when you want automatic non-breaking updates within a major version.
 
 ```yaml
 # Recommended: Use the major version tag for automatic compatible updates
@@ -46,6 +52,9 @@ To use this tool as a step in your GitHub Actions workflow, reference it using a
 
 # Alternative: Pin to a specific version (e.g., v1.1.0)
 # - uses: gtrevorrow/oci-token-exchange-action@v1.1.0 
+
+# Highest integrity: Pin to an exact commit SHA
+# - uses: gtrevorrow/oci-token-exchange-action@<full-commit-sha>
 
 # Alternative: Use the latest release
 # - uses: gtrevorrow/oci-token-exchange-action@latest
