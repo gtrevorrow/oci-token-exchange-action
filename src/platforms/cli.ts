@@ -30,12 +30,11 @@ export class CLIPlatform implements Platform {
   }
 
   setOutput(name: string, value: string): void {
-    console.log(`::set-output name=${name}::${value}`);
+    console.log(`${name}=${value}`);
   }
 
   setFailed(message: string): void {
     console.error(message);
-    process.exit(1);
   }
 
   isDebug(): boolean {

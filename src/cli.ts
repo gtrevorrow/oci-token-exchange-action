@@ -15,6 +15,8 @@ const envVarMappings: Record<string, string> = {
   DOMAIN_BASE_URL: "domain_base_url",
   OCI_TENANCY: "oci_tenancy",
   OCI_REGION: "oci_region",
+  OCI_HOME: "oci_home",
+  OCI_PROFILE: "oci_profile",
   RETRY_COUNT: "retry_count",
 
   // Support for directly providing GitHub Actions style input vars
@@ -24,6 +26,8 @@ const envVarMappings: Record<string, string> = {
   INPUT_DOMAIN_BASE_URL: "domain_base_url",
   INPUT_OCI_TENANCY: "oci_tenancy",
   INPUT_OCI_REGION: "oci_region",
+  INPUT_OCI_HOME: "oci_home",
+  INPUT_OCI_PROFILE: "oci_profile",
   INPUT_RETRY_COUNT: "retry_count",
 };
 

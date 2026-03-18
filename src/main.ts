@@ -20,7 +20,7 @@ import {
 const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   github: { audience: "https://cloud.oracle.com" },
   gitlab: {
-    tokenEnvVar: "CI_JOB_JWT_V2",
+    tokenEnvVar: "GITLAB_ID_TOKEN",
     audience: "https://cloud.oracle.com",
   },
   bitbucket: {
@@ -115,7 +115,7 @@ export async function tokenExchangeJwtToUpst(
     return response.data; // auto wrapped in a Promise
   } catch (error) {
     const attemptCounter = currentAttempt ? currentAttempt : 0;
-    if (retryCount > 0 && retryCount >= attemptCounter) {
+    if (retryCount > 0 && retryCount > attemptCounter) {
       platform.logger.warning(
         `Token exchange failed, retrying ... (${retryCount - attemptCounter - 1} retries left)`,
       );
@@ -411,7 +411,9 @@ export async function main(): Promise<void> {
         ...acc,
         [input]: platform.getInput(
           input,
-          input !== "oci_home" && input !== "oci_profile" && input !== "retry_count",
+          input !== "oci_home" &&
+            input !== "oci_profile" &&
+            input !== "retry_count",
         ),
       }),
       {},

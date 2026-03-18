@@ -15,14 +15,11 @@ deploy:
   script:
     # Install OCI CLI
     - *oci_setup
-    
+
     # Clone and build the token exchange CLI
     - *clone_build_cli
-    
-    # Export token from GitLab CI
-    - export CI_JOB_JWT_V2="$(cat $CI_JOB_JWT_FILE)"
-    
-    # Run the CLI
+
+    # Run the CLI (GITLAB_ID_TOKEN is provided by GitLab's id_tokens keyword below)
     - |
       cd dist &&
       PLATFORM=gitlab \
@@ -30,27 +27,27 @@ deploy:
       DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \
       OCI_TENANCY=${OCI_TENANCY} \
       OCI_REGION=${OCI_REGION} \
-      OCI_HOME=${$CI_PROJECT_DIR} \
+      OCI_HOME=${CI_PROJECT_DIR} \
       OCI_PROFILE=${OCI_PROFILE} \
       RETRY_COUNT=${RETRY_COUNT:-3} \
       node cli.js
-    
+
     # Return to workspace root and verify OCI CLI configuration
     - cd ../..
     - oci --auth security_token os ns get
-  
+
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
-  
+
   id_tokens:
-    ID_TOKEN:
-      aud: https://cloud.oracle.com/gitlab
+    GITLAB_ID_TOKEN:
+      aud: https://cloud.oracle.com
 
 deploy_specific_branch:
   script:
     # Install OCI CLI
     - *oci_setup
-    
+
     # Clone specific branch and build token exchange CLI
     - |
       git clone -b ${CI_COMMIT_BRANCH} https://github.com/gtrevorrow/oci-token-exchange-action.git || \
@@ -58,11 +55,8 @@ deploy_specific_branch:
     - cd oci-token-exchange-action
     - npm ci
     - npm run build:cli
-    
-    # Export token from GitLab CI
-    - export CI_JOB_JWT_V2="$(cat $CI_JOB_JWT_FILE)"
-    
-    # Run the CLI
+
+    # Run the CLI (GITLAB_ID_TOKEN is provided by GitLab's id_tokens keyword below)
     - |
       cd dist &&
       PLATFORM=gitlab \
@@ -70,18 +64,18 @@ deploy_specific_branch:
       DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \
       OCI_TENANCY=${OCI_TENANCY} \
       OCI_REGION=${OCI_REGION} \
-      OCI_HOME=${$CI_PROJECT_DIR} \
+      OCI_HOME=${CI_PROJECT_DIR} \
       OCI_PROFILE=${OCI_PROFILE} \
       RETRY_COUNT=${RETRY_COUNT:-3} \
       node cli.js
-    
+
     # Return to workspace root and verify OCI CLI configuration
     - cd ../..
     - oci --auth security_token os ns get
-  
+
   rules:
     - if: $CI_COMMIT_BRANCH != "main"
-  
+
   id_tokens:
-    ID_TOKEN:
-      aud: https://cloud.oracle.com/gitlab
+    GITLAB_ID_TOKEN:
+      aud: https://cloud.oracle.com
