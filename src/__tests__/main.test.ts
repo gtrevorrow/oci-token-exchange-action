@@ -152,6 +152,14 @@ describe("main.ts", () => {
       expect(os.homedir).toHaveBeenCalled();
     });
 
+    it("should reject oci_profile with path separators", async () => {
+      testConfig.ociProfile = "../bad-profile";
+
+      await expect(configureOciCli(mockPlatform, testConfig)).rejects.toThrow(
+        "Invalid oci_profile",
+      );
+    });
+
     it("should write correct OCI config content", async () => {
       await configureOciCli(mockPlatform, testConfig);
 

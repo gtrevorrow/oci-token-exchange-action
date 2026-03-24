@@ -53,3 +53,5 @@ node_modules/@vercel/ncc/dist/ncc/index.js.cache
 node_modules/@vercel/ncc/dist/ncc/loaders/relocate-loader.js.cache
 node_modules/@vercel/ncc/dist/ncc/loaders/shebang-loader.js.cache
 node_modules/@vercel/ncc/dist/ncc/loaders/ts-loader.js.cache
+copilot-scratch
+security_best_practices_report.md

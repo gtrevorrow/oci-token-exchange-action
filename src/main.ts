@@ -81,6 +81,77 @@ function isValidUrl(url: string): boolean {
   }
 }
 
+type TokenSummary =
+  | {
+      kind: "jwt";
+      length: number;
+      header?: Record<string, unknown>;
+      payload?: Record<string, unknown>;
+      signature_present: boolean;
+    }
+  | {
+      kind: "opaque";
+      length: number;
+    };
+
+function summarizeJwtPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const safePayload: Record<string, unknown> = {
+    iss: payload.iss,
+    aud: payload.aud,
+    exp: payload.exp,
+    iat: payload.iat,
+  };
+
+  if (typeof payload.sub === "string") {
+    safePayload.sub = `${payload.sub.substring(0, 10)}...`;
+  }
+
+  if (typeof payload.exp === "number") {
+    safePayload.expires_at = new Date(payload.exp * 1000).toISOString();
+  }
+
+  if (typeof payload.iat === "number") {
+    safePayload.issued_at = new Date(payload.iat * 1000).toISOString();
+  }
+
+  return safePayload;
+}
+
+function summarizeToken(token: string): TokenSummary {
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    return { kind: "opaque", length: token.length };
+  }
+
+  const headerStr = Buffer.from(parts[0], "base64").toString("utf8");
+  const payloadStr = Buffer.from(parts[1], "base64").toString("utf8");
+  let header: Record<string, unknown> | undefined;
+  let payload: Record<string, unknown> | undefined;
+
+  try {
+    header = JSON.parse(headerStr);
+  } catch {
+    header = undefined;
+  }
+
+  try {
+    const parsedPayload = JSON.parse(payloadStr);
+    if (parsedPayload && typeof parsedPayload === "object") {
+      payload = summarizeJwtPayload(parsedPayload as Record<string, unknown>);
+    }
+  } catch {
+    payload = undefined;
+  }
+
+  return {
+    kind: "jwt",
+    length: token.length,
+    header,
+    payload,
+    signature_present: parts[2].length > 0,
+  };
+}
+
 // Function to exchange JWT for OCI UPST token
 export async function tokenExchangeJwtToUpst(
   platform: Platform,
@@ -105,13 +176,28 @@ export async function tokenExchangeJwtToUpst(
     subject_token: subjectToken,
     subject_token_type: "jwt",
   };
-  // Note that this will log potentially sensitive information but will leave it up to the user to decide if they want to enable debug logging with this risk
-  platform.logger.debug("Token Exchange Request Data: " + JSON.stringify(data));
+  // Debug log redacts token contents while still providing helpful metadata.
+  const redactedRequest = {
+    ...data,
+    subject_token: summarizeToken(subjectToken),
+  };
+  platform.logger.debug(
+    "Token Exchange Request Data (redacted): " +
+      JSON.stringify(redactedRequest),
+  );
 
   try {
     const response = await axios.post(tokenExchangeURL, data, { headers });
+    const responseToken =
+      response.data && typeof response.data.token === "string"
+        ? summarizeToken(response.data.token)
+        : undefined;
     platform.logger.debug(
-      "Token Exchange Response: " + JSON.stringify(response.data),
+      "Token Exchange Response (redacted): " +
+        JSON.stringify({
+          ...response.data,
+          token: responseToken,
+        }),
     );
     return response.data; // auto wrapped in a Promise
   } catch (error) {
@@ -245,6 +331,12 @@ export async function configureOciCli(
         "OCI profile is not defined; set oci_profile input or OCI_PROFILE",
       );
     }
+    // Validate profile name to prevent path traversal via file paths.
+    if (!/^[A-Za-z0-9_-]+$/.test(profileName)) {
+      throw new TokenExchangeError(
+        "Invalid oci_profile. Allowed characters: letters, numbers, underscore, hyphen.",
+      );
+    }
     // Ensure required OCI parameters are provided
     if (!config.ociTenancy) {
       throw new TokenExchangeError("OCI tenancy is not defined");
@@ -346,65 +438,21 @@ export async function configureOciCli(
 // Update debugPrintJWTToken to properly handle different token formats
 function debugPrintJWTToken(platform: Platform, token: string) {
   if (platform.isDebug()) {
-    platform.logger.debug(
-      `JWT Token received (length: ${token.length} characters)`,
-    );
-
-    try {
-      const tokenParts = token.split(".");
-      if (tokenParts.length !== 3) {
-        platform.logger.debug(
-          `Warning: JWT token does not have the expected format (header.payload.signature)`,
-        );
-        return;
-      }
-
-      // Only decode and print the header and selected parts of payload, not the full token
-      const headerStr = Buffer.from(tokenParts[0], "base64").toString("utf8");
-      let header;
-      try {
-        header = JSON.parse(headerStr);
-        platform.logger.debug(`JWT Header: ${JSON.stringify(header)}`);
-      } catch (e) {
-        platform.logger.debug(`Failed to parse JWT header: ${headerStr}`);
-      }
-
-      // Parse payload but only log safe information
-      try {
-        const payloadStr = Buffer.from(tokenParts[1], "base64").toString(
-          "utf8",
-        );
-        const payload = JSON.parse(payloadStr);
-        const safePayload = {
-          iss: payload.iss,
-          aud: payload.aud,
-          exp: payload.exp,
-          iat: payload.iat,
-          sub: payload.sub ? `${payload.sub.substring(0, 10)}...` : undefined,
-          // Include timestamp information for troubleshooting token expiry issues
-          expires_at: payload.exp
-            ? new Date(payload.exp * 1000).toISOString()
-            : undefined,
-          issued_at: payload.iat
-            ? new Date(payload.iat * 1000).toISOString()
-            : undefined,
-        };
-
-        platform.logger.debug(
-          `JWT Payload (safe parts): ${JSON.stringify(safePayload)}`,
-        );
-      } catch (e) {
-        platform.logger.debug(
-          `Failed to parse JWT payload: ${e instanceof Error ? e.message : "Unknown error"}`,
-        );
-      }
-
+    const summary = summarizeToken(token);
+    if (summary.kind === "jwt") {
       platform.logger.debug(
-        `JWT Signature present: ${tokenParts[2].length > 0 ? "Yes" : "No"}`,
+        `JWT Token received (length: ${summary.length} characters)`,
       );
-    } catch (error) {
+      platform.logger.debug(`JWT Header: ${JSON.stringify(summary.header)}`);
       platform.logger.debug(
-        `Error parsing JWT token: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `JWT Payload (safe parts): ${JSON.stringify(summary.payload)}`,
+      );
+      platform.logger.debug(
+        `JWT Signature present: ${summary.signature_present ? "Yes" : "No"}`,
+      );
+    } else {
+      platform.logger.debug(
+        `JWT Token received (opaque format, length: ${summary.length} characters)`,
       );
     }
   }
