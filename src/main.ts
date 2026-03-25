@@ -17,6 +17,7 @@ import {
   UpstTokenResponse,
   TokenExchangeError,
 } from "./types";
+import { resolveInput } from "./platforms/types";
 
 const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   github: { audience: "https://cloud.oracle.com" },
@@ -33,6 +34,15 @@ const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
     audience: "https://cloud.oracle.com",
   },
 };
+
+function resolvePlatformType(): string {
+  return (
+    resolveInput("ci_platform") ||
+    resolveInput("platform") ||
+    process.env.PLATFORM ||
+    "github"
+  );
+}
 
 // Create platform instance based on environment
 function createPlatform(platformType: string): Platform {
@@ -83,16 +93,16 @@ function isValidUrl(url: string): boolean {
 
 type TokenSummary =
   | {
-      kind: "jwt";
-      length: number;
-      header?: Record<string, unknown>;
-      payload?: Record<string, unknown>;
-      signature_present: boolean;
-    }
+    kind: "jwt";
+    length: number;
+    header?: Record<string, unknown>;
+    payload?: Record<string, unknown>;
+    signature_present: boolean;
+  }
   | {
-      kind: "opaque";
-      length: number;
-    };
+    kind: "opaque";
+    length: number;
+  };
 
 function summarizeJwtPayload(payload: Record<string, unknown>): Record<string, unknown> {
   const safePayload: Record<string, unknown> = {
@@ -183,7 +193,7 @@ export async function tokenExchangeJwtToUpst(
   };
   platform.logger.debug(
     "Token Exchange Request Data (redacted): " +
-      JSON.stringify(redactedRequest),
+    JSON.stringify(redactedRequest),
   );
 
   try {
@@ -194,10 +204,10 @@ export async function tokenExchangeJwtToUpst(
         : undefined;
     platform.logger.debug(
       "Token Exchange Response (redacted): " +
-        JSON.stringify({
-          ...response.data,
-          token: responseToken,
-        }),
+      JSON.stringify({
+        ...response.data,
+        token: responseToken,
+      }),
     );
     return response.data; // auto wrapped in a Promise
   } catch (error) {
@@ -460,7 +470,7 @@ function debugPrintJWTToken(platform: Platform, token: string) {
 
 // Main function now creates a local platform instance and passes it to subfunctions
 export async function main(): Promise<void> {
-  const platformType = process.env.PLATFORM || "github";
+  const platformType = resolvePlatformType();
   if (!PLATFORM_CONFIGS[platformType]) {
     throw new Error(`Unsupported platform: ${platformType}`);
   }
@@ -548,10 +558,26 @@ export async function main(): Promise<void> {
     };
 
     await configureOciCli(platform, ociConfig);
+    const ociConfigDir = path.resolve(path.join(resolvedOciHome, ".oci"));
+    const profileDir = path.resolve(
+      path.join(ociConfigDir, resolvedOciProfile),
+    );
     platform.logger.info(
       `OCI CLI has been configured to use the session token`,
     );
 
+    platform.setOutput(
+      "oci_config_path",
+      path.resolve(path.join(ociConfigDir, "config")),
+    );
+    platform.setOutput(
+      "oci_session_token_path",
+      path.resolve(path.join(profileDir, "session")),
+    );
+    platform.setOutput(
+      "oci_private_key_path",
+      path.resolve(path.join(profileDir, "private_key.pem")),
+    );
     // Add success output
     platform.setOutput("configured", "true");
 

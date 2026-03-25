@@ -58,6 +58,30 @@ describe("CLIPlatform", () => {
       expect(token).toBe("test-token-value");
     });
 
+    test("should support GitLab token environment variable", async () => {
+      const gitlabPlatform = new CLIPlatform({
+        audience: "test-audience",
+        tokenEnvVar: "CI_JOB_JWT_V2",
+      });
+      process.env.CI_JOB_JWT_V2 = "gitlab-token";
+
+      await expect(gitlabPlatform.getOIDCToken("test-audience")).resolves.toBe(
+        "gitlab-token",
+      );
+    });
+
+    test("should support Bitbucket token environment variable", async () => {
+      const bitbucketPlatform = new CLIPlatform({
+        audience: "test-audience",
+        tokenEnvVar: "BITBUCKET_STEP_OIDC_TOKEN",
+      });
+      process.env.BITBUCKET_STEP_OIDC_TOKEN = "bitbucket-token";
+
+      await expect(
+        bitbucketPlatform.getOIDCToken("test-audience"),
+      ).resolves.toBe("bitbucket-token");
+    });
+
     test("should throw error when token environment variable is not set", async () => {
       await expect(platform.getOIDCToken("test-audience")).rejects.toThrow(
         "TEST_TOKEN_VAR environment variable not found",

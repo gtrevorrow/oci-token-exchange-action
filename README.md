@@ -331,12 +331,14 @@ The action supports flexible environment variable naming to make it easier to us
 | `DOMAIN_BASE_URL` | `INPUT_DOMAIN_BASE_URL` | Base URL of OCI Identity Domain. GitHub Action input: `domain_base_url`. CLI env var: `DOMAIN_BASE_URL`. | Yes |
 | `OCI_TENANCY` | `INPUT_OCI_TENANCY` | OCI tenancy OCID. GitHub Action input: `oci_tenancy`. CLI env var: `OCI_TENANCY`. | Yes |
 | `OCI_REGION` | `INPUT_OCI_REGION` | OCI region identifier. GitHub Action input: `oci_region`. CLI env var: `OCI_REGION`. | Yes |
-| `PLATFORM` | `INPUT_CI_PLATFORM` | CI platform. GitHub Action input: `ci_platform` (default: `github`). CLI env var: `PLATFORM` (`github`, `gitlab`, `bitbucket`, or `local`). | No (default: `github`) |
+| `PLATFORM` | `INPUT_CI_PLATFORM` | CI platform. The action resolves `ci_platform` first, then falls back to `PLATFORM`. Use `ci_platform` in GitHub Actions and `PLATFORM` for CLI/non-GitHub runners (`github`, `gitlab`, `bitbucket`, or `local`). | No (default: `github`) |
 | `RETRY_COUNT` | `INPUT_RETRY_COUNT` | Number of retry attempts. GitHub Action input: `retry_count`. CLI env var: `RETRY_COUNT`. | No (default: `0`) |
 | `LOCAL_OIDC_TOKEN` | - | OIDC token when using `PLATFORM=local` (CLI only). | Yes, when platform=local |
 | `CI_JOB_JWT_V2` | - | GitLab CI JWT token (used when `PLATFORM=gitlab` for CLI). | Yes, when platform=gitlab |
 | `BITBUCKET_STEP_OIDC_TOKEN` | - | Bitbucket OIDC token (used when `PLATFORM=bitbucket` for CLI). | Yes, when platform=bitbucket |
 | `DEBUG` | - | Enable debug output (CLI env var). | No (default: `false`) |
+
+For GitHub Actions, prefer the `ci_platform` input. For GitLab, Bitbucket, and local CLI usage, set `PLATFORM` together with the platform-specific token environment variable.
 | `OCI_HOME` | `INPUT_OCI_HOME` | Base folder for OCI config (.oci) directory. GitHub Action input: `oci_home`. CLI env var: `OCI_HOME`. | No |
 | `OCI_PROFILE` | `INPUT_OCI_PROFILE` | Name of the OCI CLI profile to create. Defaults to 'DEFAULT'. | No |
 

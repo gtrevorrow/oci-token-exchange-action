@@ -10,7 +10,7 @@ import { main } from "./main";
 // This mapping provides flexibility for users to follow different naming conventions
 const envVarMappings: Record<string, string> = {
   // Standard CLI env vars
-  PLATFORM: "platform",
+  PLATFORM: "ci_platform",
   OIDC_CLIENT_IDENTIFIER: "oidc_client_identifier",
   DOMAIN_BASE_URL: "domain_base_url",
   OCI_TENANCY: "oci_tenancy",
@@ -19,7 +19,8 @@ const envVarMappings: Record<string, string> = {
 
   // Support for directly providing GitHub Actions style input vars
   // This prevents needless remapping if already in correct format
-  INPUT_PLATFORM: "platform",
+  INPUT_PLATFORM: "ci_platform",
+  INPUT_CI_PLATFORM: "ci_platform",
   INPUT_OIDC_CLIENT_IDENTIFIER: "oidc_client_identifier",
   INPUT_DOMAIN_BASE_URL: "domain_base_url",
   INPUT_OCI_TENANCY: "oci_tenancy",
