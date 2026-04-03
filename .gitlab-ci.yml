@@ -1,9 +1,10 @@
 image: node:20
 
 .oci_setup: &oci_setup |
-  curl -LO https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh
-  bash install.sh --accept-all-defaults
-  source ~/.bashrc
+  python3 -m venv .oci-cli
+  . .oci-cli/bin/activate
+  python -m pip install --upgrade pip
+  pip install oci-cli
 
 deploy:
   script:
