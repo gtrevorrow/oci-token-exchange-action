@@ -1,6 +1,12 @@
 image: node:20
 
+variables:
+  # CI does not need local git hooks.
+  HUSKY: "0"
+
 .oci_setup: &oci_setup |
+  # Docker runners should only need Python 3 + venv support in the job image.
+  # Shell runners must provide python3 and python3 -m venv on the host.
   python3 -m venv .oci-cli
   . .oci-cli/bin/activate
   python -m pip install --upgrade pip
@@ -11,7 +17,9 @@ deploy:
     # Install OCI CLI
     - *oci_setup
 
-    # Build the CLI from the commit GitLab checked out for this job
+    # Docker runners get Node from image: node:20.
+    # Shell runners must already provide node and npm on the host.
+    # Build the CLI from the commit GitLab checked out for this job.
     - npm ci
     - npm run build:cli
 
@@ -30,7 +38,8 @@ deploy:
       RETRY_COUNT=${RETRY_COUNT:-3} \
       node dist/cli.js
 
-    # Verify OCI CLI configuration works with the generated security token
+    # Verify OCI CLI configuration works with the generated security token.
+    # The action writes OCI config under $CI_PROJECT_DIR/.oci/config.
     - oci --auth security_token --config-file "$CI_PROJECT_DIR/.oci/config" --profile "${OCI_PROFILE:-DEFAULT}" os ns get
 
   rules:

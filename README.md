@@ -95,52 +95,53 @@ npm install -g @gtrevorrow/oci-token-exchange@beta
 
 #### Option 1: Building from Source
 
-This example clones the repository, builds the CLI, and then runs it.
+This example builds the CLI from the checked-out repository and then runs it.
+It is written to reflect typical GitLab Docker-runner usage. If you use a shell
+runner instead, the host must already provide `node`, `npm`, `python3`, and
+`python3 -m venv`.
 
 ```yaml
-# Use these YAML anchors to setup common tasks
-.oci_setup: &oci_setup |
-  curl -LO https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh
-  bash install.sh --accept-all-defaults
-  source ~/.bashrc
+image: node:20
 
-.clone_build_cli: &clone_build_cli |
-  git clone https://github.com/gtrevorrow/oci-token-exchange-action.git
-  cd oci-token-exchange-action
-  npm ci
-  npm run build:cli
+.oci_setup: &oci_setup |
+  python3 -m venv .oci-cli
+  . .oci-cli/bin/activate
+  python -m pip install --upgrade pip
+  pip install oci-cli
+
+variables:
+  HUSKY: "0"
 
 deploy:
   script:
     # Install OCI CLI
     - *oci_setup
     
-    # Clone and build the token exchange CLI
-    - *clone_build_cli
+    # Build the token exchange CLI from the checked-out commit
+    - npm ci
+    - npm run build:cli
     
-    # Export token from GitLab CI
-    - export CI_JOB_JWT_V2="$(cat $CI_JOB_JWT_FILE)"
+    # Map the GitLab ID token to the variable the CLI expects
+    - export CI_JOB_JWT_V2="$ID_TOKEN"
     
     # Run the built CLI
     - |
-      cd dist &&
       PLATFORM=gitlab \
       OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \
-  DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \
+      DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \
       OCI_TENANCY=${OCI_TENANCY} \
       OCI_REGION=${OCI_REGION} \
-      RETRY_COUNT=3 \
-      node cli.js
+      OCI_HOME=${CI_PROJECT_DIR} \
+      OCI_PROFILE=${OCI_PROFILE:-DEFAULT} \
+      RETRY_COUNT=${RETRY_COUNT:-3} \
+      node dist/cli.js
     
     # Verify OCI CLI configuration works
-    - cd ../..
-    - oci os ns get
+    - oci --auth security_token --config-file "$CI_PROJECT_DIR/.oci/config" --profile "${OCI_PROFILE:-DEFAULT}" os ns get
   
-  # Run only on main branch
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
   
-  # Configure OIDC token for GitLab
   id_tokens:
     ID_TOKEN:
       aud: https://cloud.oracle.com/gitlab
@@ -151,11 +152,16 @@ deploy:
 This example installs the CLI tool directly from npm.
 
 ```yaml
-# Use these YAML anchors to setup common tasks
+image: node:20
+
 .oci_setup: &oci_setup |
-  curl -LO https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh
-  bash install.sh --accept-all-defaults
-  source ~/.bashrc
+  python3 -m venv .oci-cli
+  . .oci-cli/bin/activate
+  python -m pip install --upgrade pip
+  pip install oci-cli
+
+variables:
+  HUSKY: "0"
 
 deploy_npm:
   script:
@@ -165,27 +171,27 @@ deploy_npm:
     # Install the token exchange CLI from npm
     - npm install -g @gtrevorrow/oci-token-exchange
     
-    # Export token from GitLab CI
-    - export CI_JOB_JWT_V2="$(cat $CI_JOB_JWT_FILE)"
+    # Map the GitLab ID token to the variable the CLI expects
+    - export CI_JOB_JWT_V2="$ID_TOKEN"
     
     # Run the installed CLI
     - |
       PLATFORM=gitlab \
       OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \
-  DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \
+      DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \
       OCI_TENANCY=${OCI_TENANCY} \
       OCI_REGION=${OCI_REGION} \
-      RETRY_COUNT=3 \
+      OCI_HOME=${CI_PROJECT_DIR} \
+      OCI_PROFILE=${OCI_PROFILE:-DEFAULT} \
+      RETRY_COUNT=${RETRY_COUNT:-3} \
       oci-token-exchange
     
     # Verify OCI CLI configuration works
-    - oci os ns get
+    - oci --auth security_token --config-file "$CI_PROJECT_DIR/.oci/config" --profile "${OCI_PROFILE:-DEFAULT}" os ns get
   
-  # Run only on main branch
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
   
-  # Configure OIDC token for GitLab
   id_tokens:
     ID_TOKEN:
       aud: https://cloud.oracle.com/gitlab
