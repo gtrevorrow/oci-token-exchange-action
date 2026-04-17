@@ -124,8 +124,30 @@ describe('main (Integration)', () => {
         expect(mockPlatformInstance.getInput).toHaveBeenCalledWith('oidc_client_identifier', true);
         expect(mockPlatformInstance.getOIDCToken).toHaveBeenCalledTimes(1);
         // No direct call count checks; effects are validated by outputs and mocks
+        expect(mockPlatformInstance.setOutput).toHaveBeenCalledWith('oci_config_path', expect.any(String));
+        expect(mockPlatformInstance.setOutput).toHaveBeenCalledWith('oci_session_token_path', expect.any(String));
+        expect(mockPlatformInstance.setOutput).toHaveBeenCalledWith('oci_private_key_path', expect.any(String));
         expect(mockPlatformInstance.setOutput).toHaveBeenCalledWith('configured', 'true');
         expect(mockPlatformInstance.setFailed).not.toHaveBeenCalled();
+    });
+
+    it('should prefer ci_platform input over PLATFORM environment variable', async () => {
+        process.env.PLATFORM = 'github';
+        process.env.INPUT_CI_PLATFORM = 'gitlab';
+
+        await mainFunction();
+
+        expect(MockedCLIPlatform).toHaveBeenCalledTimes(1);
+        expect(MockedGitHubPlatform).not.toHaveBeenCalled();
+    });
+
+    it('should use CLIPlatform for bitbucket platform selection', async () => {
+        process.env.PLATFORM = 'bitbucket';
+
+        await mainFunction();
+
+        expect(MockedCLIPlatform).toHaveBeenCalledTimes(1);
+        expect(MockedGitHubPlatform).not.toHaveBeenCalled();
     });
 
     it('should call setFailed if token exchange fails', async () => {

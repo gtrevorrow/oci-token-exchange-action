@@ -30287,6 +30287,7 @@ const github_1 = __nccwpck_require__(246);
 const cli_1 = __nccwpck_require__(482);
 const types_1 = __nccwpck_require__(5077);
 Object.defineProperty(exports, "TokenExchangeError", ({ enumerable: true, get: function () { return types_1.TokenExchangeError; } }));
+const types_2 = __nccwpck_require__(9860);
 const PLATFORM_CONFIGS = {
     github: { audience: "https://cloud.oracle.com" },
     gitlab: {
@@ -30302,6 +30303,12 @@ const PLATFORM_CONFIGS = {
         audience: "https://cloud.oracle.com",
     },
 };
+function resolvePlatformType() {
+    return ((0, types_2.resolveInput)("ci_platform") ||
+        (0, types_2.resolveInput)("platform") ||
+        process.env.PLATFORM ||
+        "github");
+}
 // Create platform instance based on environment
 function createPlatform(platformType) {
     const config = PLATFORM_CONFIGS[platformType];
@@ -30619,7 +30626,7 @@ function debugPrintJWTToken(platform, token) {
 }
 // Main function now creates a local platform instance and passes it to subfunctions
 async function main() {
-    const platformType = process.env.PLATFORM || "github";
+    const platformType = resolvePlatformType();
     if (!PLATFORM_CONFIGS[platformType]) {
         throw new Error(`Unsupported platform: ${platformType}`);
     }
@@ -30681,7 +30688,12 @@ async function main() {
             ociRegion: config.oci_region,
         };
         await configureOciCli(platform, ociConfig);
+        const ociConfigDir = path.resolve(path.join(resolvedOciHome, ".oci"));
+        const profileDir = path.resolve(path.join(ociConfigDir, resolvedOciProfile));
         platform.logger.info(`OCI CLI has been configured to use the session token`);
+        platform.setOutput("oci_config_path", path.resolve(path.join(ociConfigDir, "config")));
+        platform.setOutput("oci_session_token_path", path.resolve(path.join(profileDir, "session")));
+        platform.setOutput("oci_private_key_path", path.resolve(path.join(profileDir, "private_key.pem")));
         // Add success output
         platform.setOutput("configured", "true");
         // Error Handling

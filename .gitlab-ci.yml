@@ -1,87 +1,52 @@
 image: node:20
 
-.oci_setup: &oci_setup |
-  curl -LO https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh
-  bash install.sh --accept-all-defaults
-  source ~/.bashrc
+variables:
+  # CI does not need local git hooks.
+  HUSKY: "0"
 
-.clone_build_cli: &clone_build_cli |
-  git clone -b develop https://github.com/gtrevorrow/oci-token-exchange-action.git || git clone https://github.com/gtrevorrow/oci-token-exchange-action.git
-  cd oci-token-exchange-action
-  npm ci
-  npm run build:cli
+.oci_setup: &oci_setup |
+  # Docker runners should only need Python 3 + venv support in the job image.
+  # Shell runners must provide python3 and python3 -m venv on the host.
+  python3 -m venv .oci-cli
+  . .oci-cli/bin/activate
+  python -m pip install --upgrade pip
+  pip install oci-cli
 
 deploy:
   script:
     # Install OCI CLI
     - *oci_setup
-    
-    # Clone and build the token exchange CLI
-    - *clone_build_cli
-    
-    # Export token from GitLab CI
-    - export CI_JOB_JWT_V2="$(cat $CI_JOB_JWT_FILE)"
-    
-    # Run the CLI
-    - |
-      cd dist &&
-      PLATFORM=gitlab \
-      OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \
-      DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \
-      OCI_TENANCY=${OCI_TENANCY} \
-      OCI_REGION=${OCI_REGION} \
-      OCI_HOME=${$CI_PROJECT_DIR} \
-      OCI_PROFILE=${OCI_PROFILE} \
-      RETRY_COUNT=${RETRY_COUNT:-3} \
-      node cli.js
-    
-    # Return to workspace root and verify OCI CLI configuration
-    - cd ../..
-    - oci --auth security_token os ns get
-  
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-  
-  id_tokens:
-    ID_TOKEN:
-      aud: https://cloud.oracle.com/gitlab
 
-deploy_specific_branch:
-  script:
-    # Install OCI CLI
-    - *oci_setup
-    
-    # Clone specific branch and build token exchange CLI
-    - |
-      git clone -b ${CI_COMMIT_BRANCH} https://github.com/gtrevorrow/oci-token-exchange-action.git || \
-      git clone https://github.com/gtrevorrow/oci-token-exchange-action.git
-    - cd oci-token-exchange-action
+    # Docker runners get Node from image: node:20.
+    # Shell runners must already provide node and npm on the host.
+    # Build the CLI from the commit GitLab checked out for this job.
     - npm ci
     - npm run build:cli
-    
-    # Export token from GitLab CI
-    - export CI_JOB_JWT_V2="$(cat $CI_JOB_JWT_FILE)"
-    
+
+    # Map the requested GitLab ID token to the variable the CLI expects
+    - export CI_JOB_JWT_V2="$ID_TOKEN"
+
     # Run the CLI
     - |
-      cd dist &&
       PLATFORM=gitlab \
       OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \
       DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \
       OCI_TENANCY=${OCI_TENANCY} \
       OCI_REGION=${OCI_REGION} \
-      OCI_HOME=${$CI_PROJECT_DIR} \
+      OCI_HOME=${CI_PROJECT_DIR} \
       OCI_PROFILE=${OCI_PROFILE} \
       RETRY_COUNT=${RETRY_COUNT:-3} \
-      node cli.js
-    
-    # Return to workspace root and verify OCI CLI configuration
-    - cd ../..
-    - oci --auth security_token os ns get
-  
+      node dist/cli.js
+
+    # Verify OCI CLI configuration works with the generated security token.
+    # The action writes OCI config under $CI_PROJECT_DIR/.oci/config.
+    - oci --auth security_token --config-file "$CI_PROJECT_DIR/.oci/config" --profile "${OCI_PROFILE:-DEFAULT}" os ns get
+
   rules:
-    - if: $CI_COMMIT_BRANCH != "main"
-  
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "development"
+    - if: $CI_COMMIT_BRANCH =~ /^feature\/.+$/
+
   id_tokens:
     ID_TOKEN:
       aud: https://cloud.oracle.com/gitlab
