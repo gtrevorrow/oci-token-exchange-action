@@ -93,6 +93,9 @@
         "typescript": "^5.8.2",
         "typescript-eslint": "^8.1.0"
     },
+    "overrides": {
+        "handlebars": "^4.7.9"
+    },
     "publishConfig": {
         "access": "public"
     },
