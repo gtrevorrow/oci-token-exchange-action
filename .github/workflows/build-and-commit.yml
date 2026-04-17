@@ -22,7 +22,7 @@ jobs:
       # 2. Sets up Node.js environment
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22.14.0"
 
       # 3. Installs dependencies (including @vercel/ncc for bundling)
       - run: npm ci
