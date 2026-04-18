@@ -91,6 +91,28 @@ npm install -g @gtrevorrow/oci-token-exchange@beta
     
 ```
 
+### Action Inputs
+
+| Input | Required | Default | Description |
+|------|----------|---------|-------------|
+| `ci_platform` | No | `github` | CI platform selector. Supported values: `github`, `gitlab`, `bitbucket`, `local`. |
+| `oidc_client_identifier` | Yes | - | OCI IAM confidential client in `client_id:client_secret` form. |
+| `domain_base_url` | Yes | - | OCI Identity Domain base URL, for example `https://idcs-xxxxxxxxxxxx.identity.oraclecloud.com`. |
+| `oci_tenancy` | Yes | - | OCI tenancy OCID. |
+| `oci_region` | Yes | - | OCI region identifier, for example `us-ashburn-1`. |
+| `oci_home` | No | Resolved from `OCI_HOME`, then `HOME`, then OS home directory | Base folder where the action creates the `.oci` directory. |
+| `oci_profile` | No | `DEFAULT` | OCI CLI profile name to create/update. |
+| `retry_count` | No | `0` | Number of retry attempts for token exchange failures. |
+
+### Action Outputs
+
+| Output | Description |
+|--------|-------------|
+| `configured` | Set to `true` when configuration completes successfully. |
+| `oci_config_path` | Absolute path to the generated OCI config file. |
+| `oci_session_token_path` | Absolute path to the generated OCI session token file. |
+| `oci_private_key_path` | Absolute path to the generated private key file. |
+
 ### GitLab CI
 
 #### Option 1: Building from Source
@@ -329,7 +351,7 @@ This produces verbose logs (requests/responses, file paths, etc.) to simplify tr
 
 ## Environment Variables / Github Secrets 
 
-The action supports flexible environment variable naming to make it easier to use across different platforms:
+The action supports flexible environment variable naming to make it easier to use across different platforms. The table below lists the canonical CLI environment variables together with their GitHub Actions input equivalents.
 
 | Variable | Alternate Names | Description | Required |
 |----------|----------------|-------------|----------|
@@ -337,6 +359,8 @@ The action supports flexible environment variable naming to make it easier to us
 | `DOMAIN_BASE_URL` | `INPUT_DOMAIN_BASE_URL` | Base URL of OCI Identity Domain. GitHub Action input: `domain_base_url`. CLI env var: `DOMAIN_BASE_URL`. | Yes |
 | `OCI_TENANCY` | `INPUT_OCI_TENANCY` | OCI tenancy OCID. GitHub Action input: `oci_tenancy`. CLI env var: `OCI_TENANCY`. | Yes |
 | `OCI_REGION` | `INPUT_OCI_REGION` | OCI region identifier. GitHub Action input: `oci_region`. CLI env var: `OCI_REGION`. | Yes |
+| `OCI_HOME` | `INPUT_OCI_HOME` | Base folder where the tool creates the `.oci` directory. GitHub Action input: `oci_home`. CLI env var: `OCI_HOME`. | No |
+| `OCI_PROFILE` | `INPUT_OCI_PROFILE` | Name of the OCI CLI profile to create or update. GitHub Action input: `oci_profile`. CLI env var: `OCI_PROFILE`. | No (default: `DEFAULT`) |
 | `PLATFORM` | `INPUT_CI_PLATFORM` | CI platform. `ci_platform` is the canonical GitHub Action input name. `PLATFORM` is a backward-compatible CLI/non-GitHub environment variable alias. The action resolves `ci_platform` first, then falls back to `PLATFORM` (`github`, `gitlab`, `bitbucket`, or `local`). | No (default: `github`) |
 | `RETRY_COUNT` | `INPUT_RETRY_COUNT` | Number of retry attempts. GitHub Action input: `retry_count`. CLI env var: `RETRY_COUNT`. | No (default: `0`) |
 | `LOCAL_OIDC_TOKEN` | - | OIDC token when using `PLATFORM=local` (CLI only). | Yes, when platform=local |
@@ -345,8 +369,6 @@ The action supports flexible environment variable naming to make it easier to us
 | `DEBUG` | - | Enable debug output (CLI env var). | No (default: `false`) |
 
 For GitHub Actions, use the `ci_platform` input. For CLI, GitLab, Bitbucket, and local non-GitHub usage, `PLATFORM` remains supported as a backward-compatible alias for the same setting; use it together with the platform-specific token environment variable.
-| `OCI_HOME` | `INPUT_OCI_HOME` | Base folder for OCI config (.oci) directory. GitHub Action input: `oci_home`. CLI env var: `OCI_HOME`. | No |
-| `OCI_PROFILE` | `INPUT_OCI_PROFILE` | Name of the OCI CLI profile to create. Defaults to 'DEFAULT'. | No |
 
 ### Environment Variable Handling
 

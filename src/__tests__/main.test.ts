@@ -97,10 +97,7 @@ describe("main.ts", () => {
       });
       // configureOciCli writes config, key, session, and public key artifacts
       expect(fs.writeFile).toHaveBeenCalledTimes(4);
-      expect(fs.chmod).toHaveBeenCalledWith(
-        expect.stringContaining("private_key.pem"),
-        "600",
-      );
+      expect(fs.chmod).not.toHaveBeenCalled();
     });
 
     const errorTestCases: [string, () => void, string][] = [
@@ -158,6 +155,14 @@ describe("main.ts", () => {
       await expect(configureOciCli(mockPlatform, testConfig)).rejects.toThrow(
         "Invalid oci_profile",
       );
+    });
+
+    it("should allow compatible oci_profile names with spaces and dots", async () => {
+      testConfig.ociProfile = "Team Prod.1";
+
+      await expect(
+        configureOciCli(mockPlatform, testConfig),
+      ).resolves.toBeUndefined();
     });
 
     it("should write correct OCI config content", async () => {

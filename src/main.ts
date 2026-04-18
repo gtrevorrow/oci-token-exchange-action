@@ -302,15 +302,15 @@ async function writeAndChmod(
 ): Promise<void> {
   const dir = path.dirname(filePath);
   const base = path.basename(filePath);
-  const tmpPath = path.join(dir, `.${base}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const tmpPath = path.join(
+    dir,
+    `.${base}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  );
 
   // Write to temp file with permissions if specified
-  await fs.writeFile(tmpPath, data, { mode: perms ? parseInt(perms, 8) : undefined });
-
-  // If perms not set during write, apply after
-  if (perms) {
-    await fs.chmod(tmpPath, perms);
-  }
+  await fs.writeFile(tmpPath, data, {
+    mode: perms ? parseInt(perms, 8) : undefined,
+  });
 
   // Atomic rename
   await fs.rename(tmpPath, filePath);
@@ -341,10 +341,15 @@ export async function configureOciCli(
         "OCI profile is not defined; set oci_profile input or OCI_PROFILE",
       );
     }
-    // Validate profile name to prevent path traversal via file paths.
-    if (!/^[A-Za-z0-9_-]+$/.test(profileName)) {
+    // Allow existing profile naming patterns while blocking path traversal and separators.
+    if (
+      profileName === "." ||
+      profileName === ".." ||
+      profileName.includes("/") ||
+      profileName.includes("\\")
+    ) {
       throw new TokenExchangeError(
-        "Invalid oci_profile. Allowed characters: letters, numbers, underscore, hyphen.",
+        "Invalid oci_profile. Path separators and traversal segments are not allowed.",
       );
     }
     // Ensure required OCI parameters are provided
