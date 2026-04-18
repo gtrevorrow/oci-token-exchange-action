@@ -22,7 +22,7 @@ jobs:
       # 2. Sets up Node.js environment
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22.14.0"
 
       # 3. Installs dependencies (including @vercel/ncc for bundling)
       - run: npm ci
@@ -33,6 +33,11 @@ jobs:
       # Run tests
       - name: Run tests
         run: npm test
+
+      # Report formatting drift without making it a hard merge gate
+      - name: Run format check
+        continue-on-error: true
+        run: npm run format:check
 
       # 5. Ensure dist/ matches the checked-in artifacts on pull requests
       - name: Verify dist artifacts are committed
