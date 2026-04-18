@@ -334,7 +334,7 @@ export async function configureOciCli(
     const ociConfigFile: string = path.resolve(
       path.join(ociConfigDir, "config"),
     );
-    // Create a subfolder per profile to store keys and token
+    // Use the OCI CLI session layout for profile-specific key and token material.
     const profileName = config.ociProfile;
     if (!profileName) {
       throw new TokenExchangeError(
@@ -360,8 +360,11 @@ export async function configureOciCli(
       throw new TokenExchangeError("OCI region is not defined");
     }
 
+    const sessionsDir: string = path.resolve(
+      path.join(ociConfigDir, "sessions"),
+    );
     const profileDir: string = path.resolve(
-      path.join(ociConfigDir, profileName),
+      path.join(sessionsDir, profileName),
     );
     const ociPrivateKeyFile: string = path.resolve(
       path.join(profileDir, "private_key.pem"),
@@ -369,9 +372,7 @@ export async function configureOciCli(
     const ociPublicKeyFile: string = path.resolve(
       path.join(profileDir, "public_key.pem"),
     );
-    const upstTokenFile: string = path.resolve(
-      path.join(profileDir, "session"),
-    );
+    const upstTokenFile: string = path.resolve(path.join(profileDir, "token"));
 
     platform.logger.debug(`OCI Config Dir: ${ociConfigDir}`);
 
@@ -389,7 +390,7 @@ export async function configureOciCli(
 
     try {
       await fs.mkdir(ociConfigDir, { recursive: true });
-      // Also ensure directory for this profile exists
+      await fs.mkdir(sessionsDir, { recursive: true });
       await fs.mkdir(profileDir, { recursive: true });
     } catch (error) {
       throw new TokenExchangeError("Failed to create OCI Config folder", error);
@@ -564,8 +565,9 @@ export async function main(): Promise<void> {
 
     await configureOciCli(platform, ociConfig);
     const ociConfigDir = path.resolve(path.join(resolvedOciHome, ".oci"));
+    const sessionsDir = path.resolve(path.join(ociConfigDir, "sessions"));
     const profileDir = path.resolve(
-      path.join(ociConfigDir, resolvedOciProfile),
+      path.join(sessionsDir, resolvedOciProfile),
     );
     platform.logger.info(
       `OCI CLI has been configured to use the session token`,
@@ -577,7 +579,7 @@ export async function main(): Promise<void> {
     );
     platform.setOutput(
       "oci_session_token_path",
-      path.resolve(path.join(profileDir, "session")),
+      path.resolve(path.join(profileDir, "token")),
     );
     platform.setOutput(
       "oci_private_key_path",

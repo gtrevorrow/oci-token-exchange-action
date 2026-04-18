@@ -303,9 +303,6 @@ pipelines:
         # Preserve credentials for subsequent steps
         artifacts:
           - ".oci/**"
-          - "private_key.pem"
-          - "public_key.pem"
-          - "session"
 ```
 
 #### Option 2: Using npm Package
@@ -345,9 +342,6 @@ pipelines:
         # Preserve credentials for subsequent steps
         artifacts:
           - ".oci/**"
-          - "private_key.pem"
-          - "public_key.pem"
-          - "session"
 ```
 
 ### Standalone CLI Usage
