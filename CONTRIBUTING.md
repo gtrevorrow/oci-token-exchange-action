@@ -111,9 +111,9 @@ The project follows a structured process from development to production, using a
    - Create a feature branch from `develop`:  
      `git checkout -b feature/my-feature`
    - Make your changes
-   - **Lint & Format:** `npm run lint` and `npm run format:check` - Check code style  
-     To automatically fix formatting issues: `npm run format:write`
-   - **Test:** `npm test` - Execute all Jest tests
+   - **Format:** Run `npm run format:check` to review formatting consistency. To automatically fix formatting issues, run `npm run format:write`.
+   - **Lint:** `npm run lint` is available for additional feedback, but it is not currently treated as a required passing gate for every contribution.
+   - **Required local validation:** `npm test` and `npm run build`
    - **IMPORTANT: Rebuild the action bundles** (this keeps `dist/` in sync): `npm run build`
    - Commit changes: `git commit -m "feat: add new feature"` following the [Conventional Commits](https://www.conventionalcommits.org/) format
    - Push to your feature branch: `git push origin feature/my-feature`
@@ -125,6 +125,7 @@ The project follows a structured process from development to production, using a
    - Address review comments and ensure all checks pass.
    - After approval, a repository maintainer will merge your pull request into `develop`.
    - The `build-and-commit.yml` workflow will automatically build and commit updated `dist/` files to the `develop` branch.
+   - The workflow also reports `format:check` results to help reviewers judge whether formatting drift should be fixed before merge.
    - Verify all tests pass on the `develop` branch.
 
 3. **Creating a Release:**
@@ -142,6 +143,7 @@ The project follows a structured process from development to production, using a
      - Generate release notes automatically from commit messages.
      - Create a GitHub release and a corresponding version tag (e.g., `v1.1.0`).
      - Publish the package to npm with the calculated version.
+   - The `release.yml` workflow includes additional diagnostics and structured output handling to make `semantic-release` behavior easier to inspect and troubleshoot.
 
 4. **Test Publishing:**  
    For test releases, use the `.github/workflows/test-publish.yml` workflow, which can be triggered manually from the Actions tab. Test packages are published to npm with a tag like `1.2.3-YYYYMMDD-beta`.

@@ -34,6 +34,11 @@ jobs:
       - name: Run tests
         run: npm test
 
+      # Report formatting drift without making it a hard merge gate
+      - name: Run format check
+        continue-on-error: true
+        run: npm run format:check
+
       # 5. Ensure dist/ matches the checked-in artifacts on pull requests
       - name: Verify dist artifacts are committed
         if: github.event_name == 'pull_request'
