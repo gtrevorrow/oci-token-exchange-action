@@ -21,9 +21,9 @@ jobs:
           fetch-depth: 0  # Important for access to all history and tags
 
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.14.0'
           registry-url: 'https://registry.npmjs.org/'
           scope: '@gtrevorrow'
 
