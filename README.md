@@ -6,6 +6,7 @@
   - [As GitHub Action](#as-github-action)
   - [As CLI Tool](#as-cli-tool)
 - [Usage](#usage)
+  - [Inputs And Outputs](#inputs-and-outputs)
   - [GitHub Actions](#github-actions)
   - [GitLab CI](#gitlab-ci)
     - [Option 1: Building from Source](#option-1-building-from-source)
@@ -15,8 +16,6 @@
     - [Option 2: Using npm Package](#option-2-using-npm-package-1)
   - [Standalone CLI Usage](#standalone-cli-usage)
   - [Debugging](#debugging)
-- [Environment Variables / Github Secrets](#environment-variables--github-secrets)
-  - [Environment Variable Handling](#environment-variable-handling)
 - [How it Works](#how-it-works)
 - [Semantic Versioning](#semantic-versioning)
 - [License](#license)
@@ -73,7 +72,66 @@ npm install -g @gtrevorrow/oci-token-exchange@beta
 
 ## Usage
 
+### Inputs and Outputs
+
+Use this section as the source of truth for:
+- GitHub Action `with:` inputs
+- Their mapped `INPUT_*` names and CLI environment variable names
+- Platform-specific token variables for GitLab, Bitbucket, and local CLI usage
+- Debug-related environment variables
+- Action outputs
+
+### Inputs
+
+| Action Input | CLI / Env Var | GitHub `INPUT_*` Var | Required | Default | Notes |
+|-------------|---------------|----------------------|----------|---------|-------|
+| `ci_platform` | `PLATFORM` | `INPUT_CI_PLATFORM` | No | `github` | Supported values: `github`, `gitlab`, `bitbucket`, `local`. For GitHub Actions, `ci_platform` is the canonical input. For non-GitHub usage, `PLATFORM` remains the backward-compatible alias. |
+| `oidc_client_identifier` | `OIDC_CLIENT_IDENTIFIER` | `INPUT_OIDC_CLIENT_IDENTIFIER` | Yes | - | OCI IAM confidential client in `client_id:client_secret` form. |
+| `domain_base_url` | `DOMAIN_BASE_URL` | `INPUT_DOMAIN_BASE_URL` | Yes | - | OCI Identity Domain base URL, for example `https://idcs-xxxxxxxxxxxx.identity.oraclecloud.com`. |
+| `oci_tenancy` | `OCI_TENANCY` | `INPUT_OCI_TENANCY` | Yes | - | OCI tenancy OCID. |
+| `oci_region` | `OCI_REGION` | `INPUT_OCI_REGION` | Yes | - | OCI region identifier, for example `us-ashburn-1`. |
+| `oci_home` | `OCI_HOME` | `INPUT_OCI_HOME` | No | `OCI_HOME`, then `HOME`, then OS home directory | Base folder where the tool creates the `.oci` directory. |
+| `oci_profile` | `OCI_PROFILE` | `INPUT_OCI_PROFILE` | No | `DEFAULT` | OCI CLI profile name to create or update. |
+| `retry_count` | `RETRY_COUNT` | `INPUT_RETRY_COUNT` | No | `0` | Number of retry attempts for token exchange failures. |
+
+### Platform Token Variables
+
+| Platform | Variable | Required When | Notes |
+|----------|----------|---------------|-------|
+| GitHub Actions | GitHub runtime OIDC token | `ci_platform=github` | No manual token env var is required; the action requests the token from the GitHub runtime. |
+| GitLab CI | `CI_JOB_JWT_V2` | `PLATFORM=gitlab` | In the examples below, map your `id_tokens` value into `CI_JOB_JWT_V2` before invoking the CLI. |
+| Bitbucket Pipelines | `BITBUCKET_STEP_OIDC_TOKEN` | `PLATFORM=bitbucket` | Provided by Bitbucket when `oidc: true` is enabled for the step. |
+| Local / standalone CLI | `LOCAL_OIDC_TOKEN` | `PLATFORM=local` | Provide your own OIDC token for local testing or custom runners. |
+
+### Outputs
+
+| Output | Description |
+|--------|-------------|
+| `configured` | Set to `true` when configuration completes successfully. |
+| `oci_config_path` | Absolute path to the generated OCI config file. |
+| `oci_session_token_path` | Absolute path to the generated OCI session token file. |
+| `oci_private_key_path` | Absolute path to the generated private key file. |
+
+### Debug Variables
+
+| Context | Variable | Notes |
+|---------|----------|-------|
+| GitHub Actions | `ACTIONS_STEP_DEBUG` | Enables the built-in debug channel used by the action runtime. |
+| GitHub Actions | `ACTIONS_RUNNER_DEBUG` | Optional runner-level tracing. |
+| CLI / other runners | `DEBUG` | Set to `true` to enable verbose CLI logging. |
+
+### Variable Resolution
+
+The tool accepts values in this order:
+1. GitHub Action input name such as `ci_platform`
+2. GitHub-style environment variable such as `INPUT_CI_PLATFORM`
+3. Plain environment variable such as `PLATFORM`, `OCI_HOME`, or `RETRY_COUNT`
+4. Input-specific fallbacks such as `HOME` or the OS home directory for `oci_home`
+
 ### GitHub Actions
+
+Use the example below together with the [Inputs and Outputs](#inputs-and-outputs) reference above.
+
 ```yaml
 - uses: gtrevorrow/oci-token-exchange-action@v1
   with:
@@ -91,28 +149,6 @@ npm install -g @gtrevorrow/oci-token-exchange@beta
     
 ```
 
-### Action Inputs
-
-| Input | Required | Default | Description |
-|------|----------|---------|-------------|
-| `ci_platform` | No | `github` | CI platform selector. Supported values: `github`, `gitlab`, `bitbucket`, `local`. |
-| `oidc_client_identifier` | Yes | - | OCI IAM confidential client in `client_id:client_secret` form. |
-| `domain_base_url` | Yes | - | OCI Identity Domain base URL, for example `https://idcs-xxxxxxxxxxxx.identity.oraclecloud.com`. |
-| `oci_tenancy` | Yes | - | OCI tenancy OCID. |
-| `oci_region` | Yes | - | OCI region identifier, for example `us-ashburn-1`. |
-| `oci_home` | No | Resolved from `OCI_HOME`, then `HOME`, then OS home directory | Base folder where the action creates the `.oci` directory. |
-| `oci_profile` | No | `DEFAULT` | OCI CLI profile name to create/update. |
-| `retry_count` | No | `0` | Number of retry attempts for token exchange failures. |
-
-### Action Outputs
-
-| Output | Description |
-|--------|-------------|
-| `configured` | Set to `true` when configuration completes successfully. |
-| `oci_config_path` | Absolute path to the generated OCI config file. |
-| `oci_session_token_path` | Absolute path to the generated OCI session token file. |
-| `oci_private_key_path` | Absolute path to the generated private key file. |
-
 ### GitLab CI
 
 #### Option 1: Building from Source
@@ -121,6 +157,8 @@ This example builds the CLI from the checked-out repository and then runs it.
 It is written to reflect typical GitLab Docker-runner usage. If you use a shell
 runner instead, the host must already provide `node`, `npm`, `python3`, and
 `python3 -m venv`.
+
+See [Inputs and Outputs](#inputs-and-outputs) for the full environment variable contract and required GitLab token mapping.
 
 ```yaml
 image: node:20
@@ -225,6 +263,8 @@ deploy_npm:
 
 This example clones the repository, builds the CLI, and then runs it.
 
+See [Inputs and Outputs](#inputs-and-outputs) for the full environment variable contract and Bitbucket OIDC token requirement.
+
 ```yaml
 image: node:20
 
@@ -311,6 +351,9 @@ pipelines:
 ```
 
 ### Standalone CLI Usage
+
+See [Inputs and Outputs](#inputs-and-outputs) for the complete CLI environment variable reference.
+
 ```bash
 # Install globally
 npm install -g @gtrevorrow/oci-token-exchange
@@ -348,36 +391,6 @@ export DEBUG=true
 ```
 
 This produces verbose logs (requests/responses, file paths, etc.) to simplify troubleshooting.
-
-## Environment Variables / Github Secrets 
-
-The action supports flexible environment variable naming to make it easier to use across different platforms. The table below lists the canonical CLI environment variables together with their GitHub Actions input equivalents.
-
-| Variable | Alternate Names | Description | Required |
-|----------|----------------|-------------|----------|
-| `OIDC_CLIENT_IDENTIFIER` | `INPUT_OIDC_CLIENT_IDENTIFIER` | The `client_id:client_secret` string for your confidential OAuth client application. This string is the content used for HTTP Basic Authentication (prior to Base64 encoding), as typically used with the OAuth 2.0 client credentials grant type. The action/tool handles the Base64 encoding. This client application must be registered in the OCI IAM domain and listed in the `oauthClients` attribute of your Identity Propagation Trust policy. This identifies the application making the token exchange request. The client credential derived from this identifier is used to validate the client performing the token exchange. It's important to understand that this is not analogous to a static, long-lived API key; you cannot authenticate and authorize calls to OCI APIs using these client credentials directly. Instead, it serves as an additional layer of protection (in addition to the impersonation rules defined in the trust policy) to ensure that only authorized clients can perform a token exchange. This is especially relevant in contexts like GitHub Actions, where all repositories share a single OCI OIDC provider that signs the tokens it issues with the same private key (i.e., the signing key is not unique per repository or workflow). GitHub Action input: `oidc_client_identifier`. CLI env var: `OIDC_CLIENT_IDENTIFIER`. | Yes |
-| `DOMAIN_BASE_URL` | `INPUT_DOMAIN_BASE_URL` | Base URL of OCI Identity Domain. GitHub Action input: `domain_base_url`. CLI env var: `DOMAIN_BASE_URL`. | Yes |
-| `OCI_TENANCY` | `INPUT_OCI_TENANCY` | OCI tenancy OCID. GitHub Action input: `oci_tenancy`. CLI env var: `OCI_TENANCY`. | Yes |
-| `OCI_REGION` | `INPUT_OCI_REGION` | OCI region identifier. GitHub Action input: `oci_region`. CLI env var: `OCI_REGION`. | Yes |
-| `OCI_HOME` | `INPUT_OCI_HOME` | Base folder where the tool creates the `.oci` directory. GitHub Action input: `oci_home`. CLI env var: `OCI_HOME`. | No |
-| `OCI_PROFILE` | `INPUT_OCI_PROFILE` | Name of the OCI CLI profile to create or update. GitHub Action input: `oci_profile`. CLI env var: `OCI_PROFILE`. | No (default: `DEFAULT`) |
-| `PLATFORM` | `INPUT_CI_PLATFORM` | CI platform. `ci_platform` is the canonical GitHub Action input name. `PLATFORM` is a backward-compatible CLI/non-GitHub environment variable alias. The action resolves `ci_platform` first, then falls back to `PLATFORM` (`github`, `gitlab`, `bitbucket`, or `local`). | No (default: `github`) |
-| `RETRY_COUNT` | `INPUT_RETRY_COUNT` | Number of retry attempts. GitHub Action input: `retry_count`. CLI env var: `RETRY_COUNT`. | No (default: `0`) |
-| `LOCAL_OIDC_TOKEN` | - | OIDC token when using `PLATFORM=local` (CLI only). | Yes, when platform=local |
-| `CI_JOB_JWT_V2` | - | GitLab CI JWT token (used when `PLATFORM=gitlab` for CLI). | Yes, when platform=gitlab |
-| `BITBUCKET_STEP_OIDC_TOKEN` | - | Bitbucket OIDC token (used when `PLATFORM=bitbucket` for CLI). | Yes, when platform=bitbucket |
-| `DEBUG` | - | Enable debug output (CLI env var). | No (default: `false`) |
-
-For GitHub Actions, use the `ci_platform` input. For CLI, GitLab, Bitbucket, and local non-GitHub usage, `PLATFORM` remains supported as a backward-compatible alias for the same setting; use it together with the platform-specific token environment variable.
-
-### Environment Variable Handling
-
-Variables can be provided in two ways:
-
-1. **GitHub Actions Format**: Variables in the format `INPUT_VARIABLE_NAME` (used by GitHub Actions)
-2. **Standard Format**: Plain environment variables matching the exact names listed above
-
-The GitHub Action automatically maps variables from GitHub's format to the standard format, but if you're using the CLI directly, use the variable names exactly as shown above.
 
 ## How it Works
 
