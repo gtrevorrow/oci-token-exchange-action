@@ -90,6 +90,7 @@ Use this section as the source of truth for:
 | `domain_base_url` | `DOMAIN_BASE_URL` | `INPUT_DOMAIN_BASE_URL` | Yes | - | OCI Identity Domain base URL, for example `https://idcs-xxxxxxxxxxxx.identity.oraclecloud.com`. |
 | `oci_tenancy` | `OCI_TENANCY` | `INPUT_OCI_TENANCY` | Yes | - | OCI tenancy OCID. |
 | `oci_region` | `OCI_REGION` | `INPUT_OCI_REGION` | Yes | - | OCI region identifier, for example `us-ashburn-1`. |
+| `oidc_audience` | `OIDC_AUDIENCE` | `INPUT_OIDC_AUDIENCE` | No | `https://cloud.oracle.com` | Audience requested when GitHub Actions mints the OIDC token. This is only used for the GitHub platform. |
 | `oci_home` | `OCI_HOME` | `INPUT_OCI_HOME` | No | `OCI_HOME`, then `HOME`, then OS home directory | Base folder where the tool creates the `.oci` directory. |
 | `oci_profile` | `OCI_PROFILE` | `INPUT_OCI_PROFILE` | No | `DEFAULT` | OCI CLI profile name to create or update. |
 | `retry_count` | `RETRY_COUNT` | `INPUT_RETRY_COUNT` | No | `0` | Number of retry attempts for token exchange failures. |
@@ -140,6 +141,8 @@ Use the example below together with the [Inputs and Outputs](#inputs-and-outputs
     domain_base_url: ${{ vars.DOMAIN_BASE_URL }} 
     oci_tenancy: ${{ secrets.OCI_TENANCY }}
     oci_region: ${{ secrets.OCI_REGION }}
+    # Optional: Audience requested when GitHub mints the OIDC token
+    # oidc_audience: 'https://cloud.oracle.com'
     # Optional: Custom base folder for OCI config (.oci) directory
     # oci_home: ${{ secrets.OCI_HOME }}
     # Optional: Name of the OCI CLI profile to create. Defaults to 'DEFAULT'.

@@ -4,7 +4,7 @@
  */
 
 import { jest } from "@jest/globals";
-import { Platform, PlatformLogger } from "../platforms/types";
+import { OIDCTokenOptions, Platform, PlatformLogger } from "../platforms/types";
 
 export class MockPlatform implements Platform {
   public readonly logger: PlatformLogger;
@@ -22,7 +22,8 @@ export class MockPlatform implements Platform {
   setOutput = jest.fn();
   setFailed = jest.fn();
   isDebug = jest.fn<() => boolean>().mockReturnValue(false);
+  configure = jest.fn();
   getOIDCToken = jest
-    .fn<(audience: string) => Promise<string>>()
+    .fn<(options?: OIDCTokenOptions) => Promise<string>>()
     .mockResolvedValue("mock-token");
 }

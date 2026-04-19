@@ -19,21 +19,7 @@ import {
 } from "./types";
 import { resolveInput } from "./platforms/types";
 
-const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
-  github: { audience: "https://cloud.oracle.com" },
-  gitlab: {
-    tokenEnvVar: "CI_JOB_JWT_V2",
-    audience: "https://cloud.oracle.com",
-  },
-  bitbucket: {
-    tokenEnvVar: "BITBUCKET_STEP_OIDC_TOKEN",
-    audience: "https://cloud.oracle.com",
-  },
-  local: {
-    tokenEnvVar: "LOCAL_OIDC_TOKEN",
-    audience: "https://cloud.oracle.com",
-  },
-};
+const CLI_PLATFORMS = new Set(["gitlab", "bitbucket", "local"]);
 
 function resolvePlatformType(): string {
   return (
@@ -46,14 +32,13 @@ function resolvePlatformType(): string {
 
 // Create platform instance based on environment
 function createPlatform(platformType: string): Platform {
-  const config = PLATFORM_CONFIGS[platformType];
-  if (!config) {
+  if (platformType !== "github" && !CLI_PLATFORMS.has(platformType)) {
     throw new Error(`Unsupported platform: ${platformType}`);
   }
 
   return platformType === "github"
     ? new GitHubPlatform()
-    : new CLIPlatform(config);
+    : new CLIPlatform({ platformType });
 }
 
 // Generate RSA key pair
@@ -477,7 +462,7 @@ function debugPrintJWTToken(platform: Platform, token: string) {
 // Main function now creates a local platform instance and passes it to subfunctions
 export async function main(): Promise<void> {
   const platformType = resolvePlatformType();
-  if (!PLATFORM_CONFIGS[platformType]) {
+  if (platformType !== "github" && !CLI_PLATFORMS.has(platformType)) {
     throw new Error(`Unsupported platform: ${platformType}`);
   }
   const platform: Platform = createPlatform(platformType);
@@ -487,6 +472,7 @@ export async function main(): Promise<void> {
       "domain_base_url",
       "oci_tenancy",
       "oci_region",
+      "oidc_audience",
       "oci_home",
       "oci_profile",
       "retry_count",
@@ -495,11 +481,16 @@ export async function main(): Promise<void> {
         ...accumulated,
         [currentInput]: platform.getInput(
           currentInput,
-          currentInput !== "oci_home" && currentInput !== "oci_profile" && currentInput !== "retry_count",
+          currentInput !== "oidc_audience" &&
+            currentInput !== "oci_home" &&
+            currentInput !== "oci_profile" &&
+            currentInput !== "retry_count",
         ),
       }),
       {},
     ) as ConfigInputs;
+
+    platform.configure(config);
 
     const retryCount = parseInt(config.retry_count || "0");
     if (isNaN(retryCount) || retryCount < 0) {
@@ -513,9 +504,7 @@ export async function main(): Promise<void> {
       throw new Error("Invalid domain_base_url provided");
     }
 
-    const idToken = await platform.getOIDCToken(
-      PLATFORM_CONFIGS[platformType].audience,
-    );
+    const idToken = await platform.getOIDCToken();
     platform.logger.debug(`Token obtained from ${platformType}`);
 
     debugPrintJWTToken(platform, idToken);

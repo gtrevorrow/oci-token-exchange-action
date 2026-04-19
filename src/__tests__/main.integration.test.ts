@@ -63,6 +63,7 @@ describe('main (Integration)', () => {
                 return value;
             }),
             getOIDCToken: jest.fn<() => Promise<string>>().mockResolvedValue('mock-oidc-token'),
+            configure: jest.fn(),
             setOutput: jest.fn(),
             setFailed: jest.fn(),
             isDebug: jest.fn<() => boolean>().mockReturnValue(false),
@@ -122,13 +123,41 @@ describe('main (Integration)', () => {
 
         expect(MockedGitHubPlatform).toHaveBeenCalledTimes(1);
         expect(mockPlatformInstance.getInput).toHaveBeenCalledWith('oidc_client_identifier', true);
+        expect(mockPlatformInstance.configure).toHaveBeenCalledWith(expect.objectContaining({
+            oidc_audience: '',
+        }));
         expect(mockPlatformInstance.getOIDCToken).toHaveBeenCalledTimes(1);
+        expect(mockPlatformInstance.getOIDCToken).toHaveBeenCalledWith();
         // No direct call count checks; effects are validated by outputs and mocks
         expect(mockPlatformInstance.setOutput).toHaveBeenCalledWith('oci_config_path', expect.any(String));
         expect(mockPlatformInstance.setOutput).toHaveBeenCalledWith('oci_session_token_path', expect.any(String));
         expect(mockPlatformInstance.setOutput).toHaveBeenCalledWith('oci_private_key_path', expect.any(String));
         expect(mockPlatformInstance.setOutput).toHaveBeenCalledWith('configured', 'true');
         expect(mockPlatformInstance.setFailed).not.toHaveBeenCalled();
+    });
+
+    it('should pass configured oidc_audience to the platform', async () => {
+        process.env.PLATFORM = 'github';
+        mockPlatformInstance.getInput.mockImplementation((name: string, required?: boolean) => {
+            const inputs: { [key: string]: string } = {
+                'oidc_client_identifier': 'test-client-id',
+                'domain_base_url': 'https://auth.example.com',
+                'oci_tenancy': 'test-tenancy',
+                'oci_region': 'us-test-1',
+                'oidc_audience': 'https://custom.example.com',
+            };
+            const value = inputs[name] || '';
+            if (required && !value) {
+                throw new Error(`Input required and not supplied: ${name}`);
+            }
+            return value;
+        });
+
+        await mainFunction();
+
+        expect(mockPlatformInstance.configure).toHaveBeenCalledWith(expect.objectContaining({
+            oidc_audience: 'https://custom.example.com',
+        }));
     });
 
     it('should prefer ci_platform input over PLATFORM environment variable', async () => {
