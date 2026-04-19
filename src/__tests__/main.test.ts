@@ -157,6 +157,22 @@ describe("main.ts", () => {
       );
     });
 
+    it("should reject oci_profile with INI section characters", async () => {
+      testConfig.ociProfile = "bad[profile]";
+
+      await expect(configureOciCli(mockPlatform, testConfig)).rejects.toThrow(
+        "Invalid oci_profile",
+      );
+    });
+
+    it("should reject oci_profile with control characters", async () => {
+      testConfig.ociProfile = "bad\nprofile";
+
+      await expect(configureOciCli(mockPlatform, testConfig)).rejects.toThrow(
+        "Invalid oci_profile",
+      );
+    });
+
     it("should allow compatible oci_profile names with spaces and dots", async () => {
       testConfig.ociProfile = "Team Prod.1";
 

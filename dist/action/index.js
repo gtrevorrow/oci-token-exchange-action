@@ -35802,12 +35802,15 @@ async function configureOciCli(platform, config) {
         if (!profileName) {
             throw new types_1.TokenExchangeError("OCI profile is not defined; set oci_profile input or OCI_PROFILE");
         }
-        // Allow existing profile naming patterns while blocking path traversal and separators.
+        // Allow common profile names while blocking unsafe filesystem and INI section characters.
         if (profileName === "." ||
             profileName === ".." ||
             profileName.includes("/") ||
-            profileName.includes("\\")) {
-            throw new types_1.TokenExchangeError("Invalid oci_profile. Path separators and traversal segments are not allowed.");
+            profileName.includes("\\") ||
+            profileName.includes("[") ||
+            profileName.includes("]") ||
+            /[\r\n\t\0-\x1f\x7f]/.test(profileName)) {
+            throw new types_1.TokenExchangeError("Invalid oci_profile. Path separators, INI section characters, and control characters are not allowed.");
         }
         // Ensure required OCI parameters are provided
         if (!config.ociTenancy) {
