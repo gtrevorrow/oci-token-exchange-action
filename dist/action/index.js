@@ -36010,10 +36010,6 @@ if (require.main === require.cache[eval('__filename')]) {
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.CLIPlatform = void 0;
-/**
- * Copyright (c) 2021, 2025 Oracle and/or its affiliates.
- * Licensed under the Universal Permissive License v1.0 as shown at https://oss.oracle.com/licenses/upl.
- */
 const types_1 = __nccwpck_require__(9860);
 class CLIPlatform {
     constructor(config) {
@@ -36050,7 +36046,7 @@ class CLIPlatform {
     isDebug() {
         return process.env.DEBUG === "true";
     }
-    configure() { }
+    configure(_config) { }
     async getOIDCToken(_options) {
         const tokenEnvVar = this.tokenEnvVar;
         if (tokenEnvVar) {
@@ -36122,6 +36118,7 @@ exports.GitHubPlatform = void 0;
  * Licensed under the Universal Permissive License v1.0 as shown at https://oss.oracle.com/licenses/upl.
  */
 const core = __importStar(__nccwpck_require__(2186));
+const DEFAULT_OIDC_AUDIENCE = "https://cloud.oracle.com";
 class GitHubPlatform {
     constructor() {
         this._logger = {
@@ -36145,12 +36142,15 @@ class GitHubPlatform {
     }
     configure(config) {
         this.oidcAudience =
-            typeof config.oidc_audience === "string" ? config.oidc_audience : undefined;
+            typeof config.oidc_audience === "string"
+                ? config.oidc_audience.trim() || undefined
+                : undefined;
     }
     async getOIDCToken(options) {
-        const token = await core.getIDToken(typeof (options === null || options === void 0 ? void 0 : options.audience) === "string"
-            ? options.audience
-            : this.oidcAudience);
+        const requestedAudience = typeof (options === null || options === void 0 ? void 0 : options.audience) === "string"
+            ? options.audience.trim() || undefined
+            : this.oidcAudience;
+        const token = await core.getIDToken(requestedAudience || DEFAULT_OIDC_AUDIENCE);
         if (!token) {
             throw new Error("Failed to get OIDC token from GitHub Actions");
         }

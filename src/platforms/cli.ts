@@ -2,6 +2,7 @@
  * Copyright (c) 2021, 2025 Oracle and/or its affiliates.
  * Licensed under the Universal Permissive License v1.0 as shown at https://oss.oracle.com/licenses/upl.
  */
+import type { ConfigInputs } from "../types";
 import {
   OIDCTokenOptions,
   Platform,
@@ -55,7 +56,7 @@ export class CLIPlatform implements Platform {
     return process.env.DEBUG === "true";
   }
 
-  configure(): void {}
+  configure(_config: Partial<ConfigInputs>): void {}
 
   async getOIDCToken(_options?: OIDCTokenOptions): Promise<string> {
     const tokenEnvVar = this.tokenEnvVar;

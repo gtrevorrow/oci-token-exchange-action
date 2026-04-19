@@ -6,6 +6,8 @@ import * as core from "@actions/core";
 import type { ConfigInputs } from "../types";
 import { OIDCTokenOptions, Platform, PlatformLogger } from "./types";
 
+const DEFAULT_OIDC_AUDIENCE = "https://cloud.oracle.com";
+
 export class GitHubPlatform implements Platform {
   private oidcAudience?: string;
 
@@ -34,14 +36,18 @@ export class GitHubPlatform implements Platform {
 
   configure(config: Partial<ConfigInputs>): void {
     this.oidcAudience =
-      typeof config.oidc_audience === "string" ? config.oidc_audience : undefined;
+      typeof config.oidc_audience === "string"
+        ? config.oidc_audience.trim() || undefined
+        : undefined;
   }
 
   async getOIDCToken(options?: OIDCTokenOptions): Promise<string> {
-    const token = await core.getIDToken(
+    const requestedAudience =
       typeof options?.audience === "string"
-        ? options.audience
-        : this.oidcAudience,
+        ? options.audience.trim() || undefined
+        : this.oidcAudience;
+    const token = await core.getIDToken(
+      requestedAudience || DEFAULT_OIDC_AUDIENCE,
     );
     if (!token) {
       throw new Error("Failed to get OIDC token from GitHub Actions");
