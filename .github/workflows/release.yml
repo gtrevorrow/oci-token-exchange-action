@@ -57,8 +57,10 @@ jobs:
         id: semantic
         run: |
           set -o pipefail # Ensure pipeline fails if node script fails before output redirection
+          set +e # Capture semantic-release's exit code so logs can be printed before failing
           node .github/scripts/run-semantic-release.js > semantic-release-output.json 2> semantic-release-error.log
           SCRIPT_EXIT_CODE=$?
+          set -e
           echo "Semantic release script exited with code: $SCRIPT_EXIT_CODE"
           
           # Always output error log content for debugging
