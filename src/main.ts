@@ -590,8 +590,8 @@ export async function main(): Promise<void> {
     const publicKeyB64: string = encodePublicKeyToBase64();
     platform.logger.debug(`Public Key B64: ${publicKeyB64}`);
 
-    //Exchange platform OIDC token for OCI UPST
-    const upstToken: UpstTokenResponse = await tokenExchangeJwtToUpst(
+    // Exchange platform OIDC token for the requested OCI session token.
+    const sessionTokenResponse: UpstTokenResponse = await tokenExchangeJwtToUpst(
       platform,
       {
         tokenExchangeURL: `${config.domain_base_url}/oauth2/v1/token`,
@@ -624,7 +624,7 @@ export async function main(): Promise<void> {
       ociProfile: resolvedOciProfile,
       privateKey,
       publicKey,
-      upstToken: upstToken.token,
+      upstToken: sessionTokenResponse.token,
       ociFingerprint,
       ociTenancy: config.oci_tenancy,
       ociRegion: config.oci_region,

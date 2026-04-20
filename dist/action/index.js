@@ -35990,8 +35990,8 @@ async function main() {
         // Get the B64 encoded public key DER
         const publicKeyB64 = encodePublicKeyToBase64();
         platform.logger.debug(`Public Key B64: ${publicKeyB64}`);
-        //Exchange platform OIDC token for OCI UPST
-        const upstToken = await tokenExchangeJwtToUpst(platform, {
+        // Exchange platform OIDC token for the requested OCI session token.
+        const sessionTokenResponse = await tokenExchangeJwtToUpst(platform, {
             tokenExchangeURL: `${config.domain_base_url}/oauth2/v1/token`,
             clientCred: Buffer.from(config.oidc_client_identifier).toString("base64"),
             ociPublicKey: publicKeyB64,
@@ -36012,7 +36012,7 @@ async function main() {
             ociProfile: resolvedOciProfile,
             privateKey,
             publicKey,
-            upstToken: upstToken.token,
+            upstToken: sessionTokenResponse.token,
             ociFingerprint,
             ociTenancy: config.oci_tenancy,
             ociRegion: config.oci_region,
