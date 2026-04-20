@@ -35632,7 +35632,7 @@ function resolveRpstExchangeFields({ rpstResourceType, rpstExpiration, }) {
         return undefined;
     }
     if (!trimmedResourceType) {
-        throw new Error("RPST token exchange requires res_type");
+        throw new Error("RPST token exchange requires rpstResourceType (res_type input)");
     }
     if (trimmedExpiration &&
         (!/^\d+$/.test(trimmedExpiration) || Number(trimmedExpiration) <= 0)) {

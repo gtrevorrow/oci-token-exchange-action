@@ -164,7 +164,9 @@ describe("tokenExchange", () => {
         ...testConfig,
         rpstExpiration: "60",
       }),
-    ).rejects.toThrow("RPST token exchange requires res_type");
+    ).rejects.toThrow(
+      "RPST token exchange requires rpstResourceType (res_type input)",
+    );
     expect(mockedAxios.post).not.toHaveBeenCalled();
   });
 
