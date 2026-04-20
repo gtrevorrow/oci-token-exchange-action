@@ -16,7 +16,7 @@ jobs:
       packages: 'write'
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Important for access to all history and tags
 
