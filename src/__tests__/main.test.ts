@@ -65,7 +65,7 @@ describe("main.ts", () => {
     testConfig = {
       privateKey: crypto.createPrivateKey(testKeyPair.privateKey),
       publicKey: crypto.createPublicKey(testKeyPair.publicKey),
-      upstToken: "test-token",
+      sessionToken: "test-token",
       ociFingerprint: "test-fingerprint",
       ociTenancy: "test-tenancy",
       ociRegion: "test-region",

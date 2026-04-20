@@ -76,9 +76,9 @@ export interface OciConfig {
   publicKey: crypto.KeyObject;
 
   /**
-   * User principal security token obtained from token exchange
+   * OCI session token obtained from token exchange
    */
-  upstToken: string;
+  sessionToken: string;
 
   /**
    * Fingerprint of the public key
@@ -137,9 +137,9 @@ export interface ConfigInputs {
 /**
  * Response from token exchange operation
  */
-export interface UpstTokenResponse {
+export interface TokenExchangeResponse {
   /**
-   * The exchanged UPST token
+   * The exchanged OCI session token
    */
   token: string;
 }

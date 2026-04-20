@@ -3,7 +3,7 @@ import axios from "axios";
 import {
   TokenExchangeConfig,
   TokenExchangeError,
-  tokenExchangeJwtToUpst,
+  tokenExchange,
 } from "../main";
 import * as crypto from "crypto";
 import { MockPlatform } from "./test-utils";
@@ -14,7 +14,7 @@ jest.mock("axios");
 // Use jest.Mocked for axios to get correct typings
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
-describe("tokenExchangeJwtToUpst", () => {
+describe("tokenExchange", () => {
   let mockPlatform: MockPlatform;
   let testConfig: TokenExchangeConfig;
   let setTimeoutSpy: jest.SpiedFunction<typeof global.setTimeout>;
@@ -72,7 +72,7 @@ describe("tokenExchangeJwtToUpst", () => {
     });
 
     // Call the function
-    const result = await tokenExchangeJwtToUpst(mockPlatform, testConfig);
+    const result = await tokenExchange(mockPlatform, testConfig);
 
     // Verify results
     expect(result).toEqual({ token: "mocked-upst-token" });
@@ -114,7 +114,7 @@ describe("tokenExchangeJwtToUpst", () => {
       rpstResourceType: "ref_github",
     };
 
-    const result = await tokenExchangeJwtToUpst(mockPlatform, rpstConfig);
+    const result = await tokenExchange(mockPlatform, rpstConfig);
 
     expect(result).toEqual({ token: "mocked-rpst-token" });
     expect(mockedAxios.post).toHaveBeenCalledWith(
@@ -141,7 +141,7 @@ describe("tokenExchangeJwtToUpst", () => {
       data: { token: "mocked-rpst-token" },
     });
 
-    await tokenExchangeJwtToUpst(mockPlatform, {
+    await tokenExchange(mockPlatform, {
       ...testConfig,
       rpstResourceType: "ref_github",
       rpstExpiration: "60",
@@ -160,7 +160,7 @@ describe("tokenExchangeJwtToUpst", () => {
 
   it("should require res_type when rpst_exp is configured", async () => {
     await expect(
-      tokenExchangeJwtToUpst(mockPlatform, {
+      tokenExchange(mockPlatform, {
         ...testConfig,
         rpstExpiration: "60",
       }),
@@ -170,7 +170,7 @@ describe("tokenExchangeJwtToUpst", () => {
 
   it("should reject a non-integer RPST expiration", async () => {
     await expect(
-      tokenExchangeJwtToUpst(mockPlatform, {
+      tokenExchange(mockPlatform, {
         ...testConfig,
         rpstResourceType: "ref_github",
         rpstExpiration: "one hour",
@@ -200,7 +200,7 @@ describe("tokenExchangeJwtToUpst", () => {
       data: { token: jwtToken },
     });
 
-    await tokenExchangeJwtToUpst(mockPlatform, testConfig);
+    await tokenExchange(mockPlatform, testConfig);
 
     const debugCalls = (mockPlatform.logger.debug as jest.Mock).mock.calls.map(
       (call) => String(call[0]),
@@ -234,7 +234,7 @@ describe("tokenExchangeJwtToUpst", () => {
       });
 
     // Call the function
-    const result = await tokenExchangeJwtToUpst(mockPlatform, testConfig);
+    const result = await tokenExchange(mockPlatform, testConfig);
 
     // Verify results
     expect(result).toEqual({ token: "mocked-upst-token-after-retry" });
@@ -284,11 +284,11 @@ describe("tokenExchangeJwtToUpst", () => {
 
       if (shouldThrowTokenExchangeError) {
         await expect(
-          tokenExchangeJwtToUpst(mockPlatform, quickTestConfig),
+          tokenExchange(mockPlatform, quickTestConfig),
         ).rejects.toThrow(TokenExchangeError);
       } else {
         await expect(
-          tokenExchangeJwtToUpst(mockPlatform, quickTestConfig),
+          tokenExchange(mockPlatform, quickTestConfig),
         ).rejects.toThrow(errorMessage);
       }
     },
@@ -301,7 +301,7 @@ describe("tokenExchangeJwtToUpst", () => {
 
     const noRetryConfig = { ...testConfig, retryCount: 0 };
     await expect(
-      tokenExchangeJwtToUpst(mockPlatform, noRetryConfig),
+      tokenExchange(mockPlatform, noRetryConfig),
     ).rejects.toThrow("Request timeout");
   });
 });

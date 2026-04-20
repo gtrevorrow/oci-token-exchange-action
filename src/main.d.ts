@@ -6,27 +6,27 @@ import { Platform } from "./platforms/types";
 import {
   OciConfig,
   TokenExchangeConfig,
-  UpstTokenResponse,
+  TokenExchangeResponse,
   TokenExchangeError,
 } from "./types";
 
 export {
   OciConfig,
   TokenExchangeConfig,
-  UpstTokenResponse,
+  TokenExchangeResponse,
   TokenExchangeError,
 };
 
 /**
- * Exchanges a JWT token for an OCI UPST token
+ * Exchanges a JWT token for an OCI session token
  * @param platform Platform instance for logging and configuration
  * @param config Token exchange configuration
- * @returns Promise resolving to UPST token response
+ * @returns Promise resolving to token exchange response
  */
-export function tokenExchangeJwtToUpst(
+export function tokenExchange(
   platform: Platform,
   config: TokenExchangeConfig,
-): Promise<UpstTokenResponse>;
+): Promise<TokenExchangeResponse>;
 
 /**
  * Configures the OCI CLI with the provided configuration

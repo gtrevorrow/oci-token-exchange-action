@@ -15,7 +15,7 @@ import {
   OciConfig,
   ConfigInputs,
   OciSessionTokenType,
-  UpstTokenResponse,
+  TokenExchangeResponse,
   TokenExchangeError,
 } from "./types";
 import { resolveInput } from "./platforms/types";
@@ -192,8 +192,8 @@ function summarizeToken(token: string): TokenSummary {
   };
 }
 
-// Function to exchange JWT for an OCI UPST or RPST token
-export async function tokenExchangeJwtToUpst(
+// Function to exchange JWT for an OCI session token.
+export async function tokenExchange(
   platform: Platform,
   {
     tokenExchangeURL,
@@ -205,7 +205,7 @@ export async function tokenExchangeJwtToUpst(
     rpstExpiration,
     currentAttempt = 0,
   }: TokenExchangeConfig,
-): Promise<UpstTokenResponse> {
+): Promise<TokenExchangeResponse> {
   const rpstExchangeFields = resolveRpstExchangeFields({
     rpstResourceType,
     rpstExpiration,
@@ -257,7 +257,7 @@ export async function tokenExchangeJwtToUpst(
         `Token exchange failed, retrying ... (${retryCount - attemptCounter} retries left)`,
       );
       await delay(attemptCounter + 1);
-      return tokenExchangeJwtToUpst(platform, {
+      return tokenExchange(platform, {
         // Promise flattening
         tokenExchangeURL,
         clientCred,
@@ -420,7 +420,7 @@ export async function configureOciCli(
     const ociPublicKeyFile: string = path.resolve(
       path.join(profileDir, "public_key.pem"),
     );
-    const upstTokenFile: string = path.resolve(path.join(profileDir, "token"));
+    const sessionTokenFile: string = path.resolve(path.join(profileDir, "token"));
 
     platform.logger.debug(`OCI Config Dir: ${ociConfigDir}`);
 
@@ -431,7 +431,7 @@ export async function configureOciCli(
       key_file: ociPrivateKeyFile,
       tenancy: config.ociTenancy,
       region: config.ociRegion,
-      security_token_file: upstTokenFile,
+      security_token_file: sessionTokenFile,
     };
 
     platform.logger.debug(`Preparing OCI config for profile [${profileName}]`);
@@ -460,7 +460,7 @@ export async function configureOciCli(
     if (!publicKeyPem || typeof publicKeyPem !== "string") {
       throw new Error("Public key export failed or invalid type");
     }
-    if (!config.upstToken || typeof config.upstToken !== "string") {
+    if (!config.sessionToken || typeof config.sessionToken !== "string") {
       throw new Error("Session token is undefined or invalid type");
     }
     if (!profileObject || typeof profileObject !== "object") {
@@ -486,7 +486,7 @@ export async function configureOciCli(
       // Write keys and token
       await writeAndChmod(ociPrivateKeyFile, privateKeyPem, "600");
       await writeAndChmod(ociPublicKeyFile, publicKeyPem);
-      await writeAndChmod(upstTokenFile, config.upstToken, "600");
+      await writeAndChmod(sessionTokenFile, config.sessionToken, "600");
     } catch (err) {
       throw new TokenExchangeError(
         "Failed to write OCI configuration files",
@@ -547,11 +547,11 @@ export async function main(): Promise<void> {
         [currentInput]: platform.getInput(
           currentInput,
           currentInput !== "oidc_audience" &&
-            currentInput !== "oci_home" &&
-            currentInput !== "oci_profile" &&
-            currentInput !== "retry_count" &&
-            currentInput !== "res_type" &&
-            currentInput !== "rpst_exp",
+          currentInput !== "oci_home" &&
+          currentInput !== "oci_profile" &&
+          currentInput !== "retry_count" &&
+          currentInput !== "res_type" &&
+          currentInput !== "rpst_exp",
         ),
       }),
       {},
@@ -591,7 +591,7 @@ export async function main(): Promise<void> {
     platform.logger.debug(`Public Key B64: ${publicKeyB64}`);
 
     // Exchange platform OIDC token for the requested OCI session token.
-    const sessionTokenResponse: UpstTokenResponse = await tokenExchangeJwtToUpst(
+    const sessionTokenResponse: TokenExchangeResponse = await tokenExchange(
       platform,
       {
         tokenExchangeURL: `${config.domain_base_url}/oauth2/v1/token`,
@@ -624,7 +624,7 @@ export async function main(): Promise<void> {
       ociProfile: resolvedOciProfile,
       privateKey,
       publicKey,
-      upstToken: sessionTokenResponse.token,
+      sessionToken: sessionTokenResponse.token,
       ociFingerprint,
       ociTenancy: config.oci_tenancy,
       ociRegion: config.oci_region,
