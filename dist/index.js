@@ -35781,12 +35781,14 @@ async function writeAndChmod(filePath, data, perms) {
     const dir = path.dirname(filePath);
     const base = path.basename(filePath);
     const tmpPath = path.join(dir, `.${base}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-    // Write to temp file with permissions if specified
-    await fs.writeFile(tmpPath, data, {
-        mode: perms ? parseInt(perms, 8) : undefined,
-    });
+    await fs.writeFile(tmpPath, data);
     // Atomic rename
     await fs.rename(tmpPath, filePath);
+    // fs.writeFile mode only applies when creating a file. Enforce permissions
+    // after rename so existing config/key/token files cannot retain loose modes.
+    if (perms) {
+        await fs.chmod(filePath, perms);
+    }
 }
 async function configureOciCli(platform, config) {
     try {

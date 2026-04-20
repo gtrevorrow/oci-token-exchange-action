@@ -97,7 +97,19 @@ describe("main.ts", () => {
       });
       // configureOciCli writes config, key, session, and public key artifacts
       expect(fs.writeFile).toHaveBeenCalledTimes(4);
-      expect(fs.chmod).not.toHaveBeenCalled();
+      expect(fs.chmod).toHaveBeenCalledWith(
+        expect.stringContaining("config"),
+        "600",
+      );
+      expect(fs.chmod).toHaveBeenCalledWith(
+        expect.stringContaining("private_key.pem"),
+        "600",
+      );
+      expect(fs.chmod).toHaveBeenCalledWith(
+        expect.stringContaining("token"),
+        "600",
+      );
+      expect(fs.chmod).toHaveBeenCalledTimes(3);
     });
 
     const errorTestCases: [string, () => void, string][] = [
