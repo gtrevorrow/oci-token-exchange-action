@@ -35624,6 +35624,27 @@ function isValidUrl(url) {
         return false;
     }
 }
+function resolveRpstExchangeFields({ rpstResourceType, rpstExpiration, }) {
+    const trimmedResourceType = typeof rpstResourceType === "string" ? rpstResourceType.trim() : "";
+    const trimmedExpiration = typeof rpstExpiration === "string" ? rpstExpiration.trim() : "";
+    if (!trimmedResourceType && !trimmedExpiration) {
+        return undefined;
+    }
+    if (!trimmedResourceType) {
+        throw new Error("RPST token exchange requires res_type");
+    }
+    if (trimmedExpiration &&
+        (!/^\d+$/.test(trimmedExpiration) || Number(trimmedExpiration) <= 0)) {
+        throw new Error("rpst_exp must be a positive integer number of minutes");
+    }
+    return {
+        res_type: trimmedResourceType,
+        ...(trimmedExpiration ? { rpst_exp: trimmedExpiration } : {}),
+    };
+}
+function getRequestedTokenTypeUrn(requestedTokenType) {
+    return `urn:oci:token-type:oci-${requestedTokenType}`;
+}
 function summarizeJwtPayload(payload) {
     const safePayload = {
         iss: payload.iss,
@@ -35674,18 +35695,26 @@ function summarizeToken(token) {
         signature_present: parts[2].length > 0,
     };
 }
-// Function to exchange JWT for OCI UPST token
-async function tokenExchangeJwtToUpst(platform, { tokenExchangeURL, clientCred, ociPublicKey, subjectToken, retryCount, currentAttempt = 0, }) {
+// Function to exchange JWT for an OCI UPST or RPST token
+async function tokenExchangeJwtToUpst(platform, { tokenExchangeURL, clientCred, ociPublicKey, subjectToken, retryCount, rpstResourceType, rpstExpiration, currentAttempt = 0, }) {
+    const rpstExchangeFields = resolveRpstExchangeFields({
+        rpstResourceType,
+        rpstExpiration,
+    });
+    const requestedTokenType = rpstExchangeFields
+        ? "rpst"
+        : "upst";
     const headers = {
         "Content-Type": "application/x-www-form-urlencoded",
         Authorization: `Basic ${clientCred}`,
     };
     const data = {
         grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
-        requested_token_type: "urn:oci:token-type:oci-upst",
+        requested_token_type: getRequestedTokenTypeUrn(requestedTokenType),
         public_key: ociPublicKey,
         subject_token: subjectToken,
         subject_token_type: "jwt",
+        ...rpstExchangeFields,
     };
     // Debug log redacts token contents while still providing helpful metadata.
     const redactedRequest = {
@@ -35718,11 +35747,13 @@ async function tokenExchangeJwtToUpst(platform, { tokenExchangeURL, clientCred, 
                 ociPublicKey,
                 subjectToken: subjectToken,
                 retryCount,
+                rpstResourceType,
+                rpstExpiration,
                 currentAttempt: attemptCounter + 1,
             });
         }
         else {
-            platform.logger.error("Failed to exchange JWT for UPST after multiple attempts");
+            platform.logger.error(`Failed to exchange JWT for ${requestedTokenType.toUpperCase()} after multiple attempts`);
             if (error instanceof Error) {
                 throw new types_1.TokenExchangeError(`Token exchange failed: ${error.message}`, error);
             }
@@ -35922,18 +35953,29 @@ async function main() {
             "oci_home",
             "oci_profile",
             "retry_count",
+            "res_type",
+            "rpst_exp",
         ].reduce((accumulated, currentInput) => ({
             ...accumulated,
             [currentInput]: platform.getInput(currentInput, currentInput !== "oidc_audience" &&
                 currentInput !== "oci_home" &&
                 currentInput !== "oci_profile" &&
-                currentInput !== "retry_count"),
+                currentInput !== "retry_count" &&
+                currentInput !== "res_type" &&
+                currentInput !== "rpst_exp"),
         }), {});
         platform.configure(config);
         const retryCount = parseInt(config.retry_count || "0");
         if (isNaN(retryCount) || retryCount < 0) {
             throw new Error("retry_count must be a non-negative number");
         }
+        const rpstExchangeFields = resolveRpstExchangeFields({
+            rpstResourceType: config.res_type,
+            rpstExpiration: config.rpst_exp,
+        });
+        const requestedTokenType = rpstExchangeFields
+            ? "rpst"
+            : "upst";
         // Validate the tokenExchangeURL
         const testUrl = `${config.domain_base_url}/oauth2/v1/token`;
         // Debug throw removed; proceed with normal execution
@@ -35955,8 +35997,10 @@ async function main() {
             ociPublicKey: publicKeyB64,
             subjectToken: idToken,
             retryCount,
+            rpstResourceType: config.res_type,
+            rpstExpiration: config.rpst_exp,
         });
-        platform.logger.info(`OCI issued a Session Token `);
+        platform.logger.info(`OCI issued a ${requestedTokenType.toUpperCase()} Session Token`);
         // Resolve OCI home and profile, falling back to environment or defaults
         const resolvedOciHome = config.oci_home || process.env.OCI_HOME || process.env.HOME || os_1.default.homedir();
         if (!resolvedOciHome) {

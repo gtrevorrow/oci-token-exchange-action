@@ -104,6 +104,81 @@ describe("tokenExchangeJwtToUpst", () => {
     );
   });
 
+  it("should successfully exchange JWT for RPST when res_type is configured", async () => {
+    mockedAxios.post.mockResolvedValueOnce({
+      data: { token: "mocked-rpst-token" },
+    });
+
+    const rpstConfig = {
+      ...testConfig,
+      rpstResourceType: "ref_github",
+    };
+
+    const result = await tokenExchangeJwtToUpst(mockPlatform, rpstConfig);
+
+    expect(result).toEqual({ token: "mocked-rpst-token" });
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      testConfig.tokenExchangeURL,
+      {
+        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+        requested_token_type: "urn:oci:token-type:oci-rpst",
+        public_key: testConfig.ociPublicKey,
+        subject_token: testConfig.subjectToken,
+        subject_token_type: "jwt",
+        res_type: "ref_github",
+      },
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Basic ${testConfig.clientCred}`,
+        },
+      },
+    );
+  });
+
+  it("should include rpst_exp when configured for RPST", async () => {
+    mockedAxios.post.mockResolvedValueOnce({
+      data: { token: "mocked-rpst-token" },
+    });
+
+    await tokenExchangeJwtToUpst(mockPlatform, {
+      ...testConfig,
+      rpstResourceType: "ref_github",
+      rpstExpiration: "60",
+    });
+
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      testConfig.tokenExchangeURL,
+      expect.objectContaining({
+        requested_token_type: "urn:oci:token-type:oci-rpst",
+        res_type: "ref_github",
+        rpst_exp: "60",
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it("should require res_type when rpst_exp is configured", async () => {
+    await expect(
+      tokenExchangeJwtToUpst(mockPlatform, {
+        ...testConfig,
+        rpstExpiration: "60",
+      }),
+    ).rejects.toThrow("RPST token exchange requires res_type");
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+  });
+
+  it("should reject a non-integer RPST expiration", async () => {
+    await expect(
+      tokenExchangeJwtToUpst(mockPlatform, {
+        ...testConfig,
+        rpstResourceType: "ref_github",
+        rpstExpiration: "one hour",
+      }),
+    ).rejects.toThrow("rpst_exp must be a positive integer number of minutes");
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+  });
+
   it("should redact tokens in debug logs", async () => {
     const jwtHeader = Buffer.from(
       JSON.stringify({ alg: "RS256", typ: "JWT" }),

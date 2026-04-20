@@ -160,6 +160,37 @@ describe('main (Integration)', () => {
         }));
     });
 
+    it('should request an RPST when RPST fields are configured', async () => {
+        process.env.PLATFORM = 'github';
+        mockPlatformInstance.getInput.mockImplementation((name: string, required?: boolean) => {
+            const inputs: { [key: string]: string } = {
+                'oidc_client_identifier': 'test-client-id',
+                'domain_base_url': 'https://auth.example.com',
+                'oci_tenancy': 'test-tenancy',
+                'oci_region': 'us-test-1',
+                'res_type': 'ref_github',
+                'rpst_exp': '60',
+            };
+            const value = inputs[name] || '';
+            if (required && !value) {
+                throw new Error(`Input required and not supplied: ${name}`);
+            }
+            return value;
+        });
+
+        await mainFunction();
+
+        expect(mockedAxios.post).toHaveBeenCalledWith(
+            'https://auth.example.com/oauth2/v1/token',
+            expect.objectContaining({
+                requested_token_type: 'urn:oci:token-type:oci-rpst',
+                res_type: 'ref_github',
+                rpst_exp: '60',
+            }),
+            expect.any(Object),
+        );
+    });
+
     it('should prefer ci_platform input over PLATFORM environment variable', async () => {
         process.env.PLATFORM = 'github';
         process.env.INPUT_CI_PLATFORM = 'gitlab';
