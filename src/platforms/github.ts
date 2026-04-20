@@ -3,9 +3,14 @@
  * Licensed under the Universal Permissive License v1.0 as shown at https://oss.oracle.com/licenses/upl.
  */
 import * as core from "@actions/core";
-import { Platform, PlatformLogger } from "./types";
+import type { ConfigInputs } from "../types";
+import { OIDCTokenOptions, Platform, PlatformLogger } from "./types";
+
+const DEFAULT_OIDC_AUDIENCE = "https://cloud.oracle.com";
 
 export class GitHubPlatform implements Platform {
+  private oidcAudience?: string;
+
   private readonly _logger: PlatformLogger = {
     debug: (message: string) => core.debug(message),
     info: (message: string) => core.info(message),
@@ -29,8 +34,21 @@ export class GitHubPlatform implements Platform {
     return core.isDebug();
   }
 
-  async getOIDCToken(audience: string): Promise<string> {
-    const token = await core.getIDToken(audience);
+  configure(config: Partial<ConfigInputs>): void {
+    this.oidcAudience =
+      typeof config.oidc_audience === "string"
+        ? config.oidc_audience.trim() || undefined
+        : undefined;
+  }
+
+  async getOIDCToken(options?: OIDCTokenOptions): Promise<string> {
+    const requestedAudience =
+      typeof options?.audience === "string"
+        ? options.audience.trim() || undefined
+        : this.oidcAudience;
+    const token = await core.getIDToken(
+      requestedAudience || DEFAULT_OIDC_AUDIENCE,
+    );
     if (!token) {
       throw new Error("Failed to get OIDC token from GitHub Actions");
     }

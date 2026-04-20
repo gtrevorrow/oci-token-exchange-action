@@ -93,6 +93,10 @@ export interface ConfigInputs {
   oci_tenancy: string;
   oci_region: string;
   /**
+   * Optional audience requested when GitHub Actions mints the OIDC token.
+   */
+  oidc_audience?: string;
+  /**
    * Base folder for OCI config (.oci) directory. Defaults to $HOME.
    */
   oci_home?: string;

@@ -19,21 +19,7 @@ import {
 } from "./types";
 import { resolveInput } from "./platforms/types";
 
-const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
-  github: { audience: "https://cloud.oracle.com" },
-  gitlab: {
-    tokenEnvVar: "CI_JOB_JWT_V2",
-    audience: "https://cloud.oracle.com",
-  },
-  bitbucket: {
-    tokenEnvVar: "BITBUCKET_STEP_OIDC_TOKEN",
-    audience: "https://cloud.oracle.com",
-  },
-  local: {
-    tokenEnvVar: "LOCAL_OIDC_TOKEN",
-    audience: "https://cloud.oracle.com",
-  },
-};
+const CLI_PLATFORMS = new Set(["gitlab", "bitbucket", "local"]);
 
 function resolvePlatformType(): string {
   return (
@@ -46,14 +32,13 @@ function resolvePlatformType(): string {
 
 // Create platform instance based on environment
 function createPlatform(platformType: string): Platform {
-  const config = PLATFORM_CONFIGS[platformType];
-  if (!config) {
+  if (platformType !== "github" && !CLI_PLATFORMS.has(platformType)) {
     throw new Error(`Unsupported platform: ${platformType}`);
   }
 
   return platformType === "github"
     ? new GitHubPlatform()
-    : new CLIPlatform(config);
+    : new CLIPlatform({ platformType });
 }
 
 // Generate RSA key pair
@@ -302,18 +287,21 @@ async function writeAndChmod(
 ): Promise<void> {
   const dir = path.dirname(filePath);
   const base = path.basename(filePath);
-  const tmpPath = path.join(dir, `.${base}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const tmpPath = path.join(
+    dir,
+    `.${base}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  );
 
-  // Write to temp file with permissions if specified
-  await fs.writeFile(tmpPath, data, { mode: perms ? parseInt(perms, 8) : undefined });
-
-  // If perms not set during write, apply after
-  if (perms) {
-    await fs.chmod(tmpPath, perms);
-  }
+  await fs.writeFile(tmpPath, data);
 
   // Atomic rename
   await fs.rename(tmpPath, filePath);
+
+  // fs.writeFile mode only applies when creating a file. Enforce permissions
+  // after rename so existing config/key/token files cannot retain loose modes.
+  if (perms) {
+    await fs.chmod(filePath, perms);
+  }
 }
 
 export async function configureOciCli(
@@ -334,17 +322,25 @@ export async function configureOciCli(
     const ociConfigFile: string = path.resolve(
       path.join(ociConfigDir, "config"),
     );
-    // Create a subfolder per profile to store keys and token
+    // Use the OCI CLI session layout for profile-specific key and token material.
     const profileName = config.ociProfile;
     if (!profileName) {
       throw new TokenExchangeError(
         "OCI profile is not defined; set oci_profile input or OCI_PROFILE",
       );
     }
-    // Validate profile name to prevent path traversal via file paths.
-    if (!/^[A-Za-z0-9_-]+$/.test(profileName)) {
+    // Allow common profile names while blocking unsafe filesystem and INI section characters.
+    if (
+      profileName === "." ||
+      profileName === ".." ||
+      profileName.includes("/") ||
+      profileName.includes("\\") ||
+      profileName.includes("[") ||
+      profileName.includes("]") ||
+      /[\r\n\t\0-\x1f\x7f]/.test(profileName)
+    ) {
       throw new TokenExchangeError(
-        "Invalid oci_profile. Allowed characters: letters, numbers, underscore, hyphen.",
+        "Invalid oci_profile. Path separators, INI section characters, and control characters are not allowed.",
       );
     }
     // Ensure required OCI parameters are provided
@@ -355,8 +351,11 @@ export async function configureOciCli(
       throw new TokenExchangeError("OCI region is not defined");
     }
 
+    const sessionsDir: string = path.resolve(
+      path.join(ociConfigDir, "sessions"),
+    );
     const profileDir: string = path.resolve(
-      path.join(ociConfigDir, profileName),
+      path.join(sessionsDir, profileName),
     );
     const ociPrivateKeyFile: string = path.resolve(
       path.join(profileDir, "private_key.pem"),
@@ -364,9 +363,7 @@ export async function configureOciCli(
     const ociPublicKeyFile: string = path.resolve(
       path.join(profileDir, "public_key.pem"),
     );
-    const upstTokenFile: string = path.resolve(
-      path.join(profileDir, "session"),
-    );
+    const upstTokenFile: string = path.resolve(path.join(profileDir, "token"));
 
     platform.logger.debug(`OCI Config Dir: ${ociConfigDir}`);
 
@@ -384,7 +381,7 @@ export async function configureOciCli(
 
     try {
       await fs.mkdir(ociConfigDir, { recursive: true });
-      // Also ensure directory for this profile exists
+      await fs.mkdir(sessionsDir, { recursive: true });
       await fs.mkdir(profileDir, { recursive: true });
     } catch (error) {
       throw new TokenExchangeError("Failed to create OCI Config folder", error);
@@ -471,7 +468,7 @@ function debugPrintJWTToken(platform: Platform, token: string) {
 // Main function now creates a local platform instance and passes it to subfunctions
 export async function main(): Promise<void> {
   const platformType = resolvePlatformType();
-  if (!PLATFORM_CONFIGS[platformType]) {
+  if (platformType !== "github" && !CLI_PLATFORMS.has(platformType)) {
     throw new Error(`Unsupported platform: ${platformType}`);
   }
   const platform: Platform = createPlatform(platformType);
@@ -481,6 +478,7 @@ export async function main(): Promise<void> {
       "domain_base_url",
       "oci_tenancy",
       "oci_region",
+      "oidc_audience",
       "oci_home",
       "oci_profile",
       "retry_count",
@@ -489,11 +487,16 @@ export async function main(): Promise<void> {
         ...accumulated,
         [currentInput]: platform.getInput(
           currentInput,
-          currentInput !== "oci_home" && currentInput !== "oci_profile" && currentInput !== "retry_count",
+          currentInput !== "oidc_audience" &&
+            currentInput !== "oci_home" &&
+            currentInput !== "oci_profile" &&
+            currentInput !== "retry_count",
         ),
       }),
       {},
     ) as ConfigInputs;
+
+    platform.configure(config);
 
     const retryCount = parseInt(config.retry_count || "0");
     if (isNaN(retryCount) || retryCount < 0) {
@@ -507,9 +510,7 @@ export async function main(): Promise<void> {
       throw new Error("Invalid domain_base_url provided");
     }
 
-    const idToken = await platform.getOIDCToken(
-      PLATFORM_CONFIGS[platformType].audience,
-    );
+    const idToken = await platform.getOIDCToken();
     platform.logger.debug(`Token obtained from ${platformType}`);
 
     debugPrintJWTToken(platform, idToken);
@@ -559,8 +560,9 @@ export async function main(): Promise<void> {
 
     await configureOciCli(platform, ociConfig);
     const ociConfigDir = path.resolve(path.join(resolvedOciHome, ".oci"));
+    const sessionsDir = path.resolve(path.join(ociConfigDir, "sessions"));
     const profileDir = path.resolve(
-      path.join(ociConfigDir, resolvedOciProfile),
+      path.join(sessionsDir, resolvedOciProfile),
     );
     platform.logger.info(
       `OCI CLI has been configured to use the session token`,
@@ -572,7 +574,7 @@ export async function main(): Promise<void> {
     );
     platform.setOutput(
       "oci_session_token_path",
-      path.resolve(path.join(profileDir, "session")),
+      path.resolve(path.join(profileDir, "token")),
     );
     platform.setOutput(
       "oci_private_key_path",

@@ -19,8 +19,12 @@ inputs:
   oci_region:
     description: "OCI region identifier (e.g., us-ashburn-1)."
     required: true
+  oidc_audience:
+    description: "Optional: Audience to request when GitHub Actions mints the OIDC token. Defaults to 'https://cloud.oracle.com'."
+    required: false
+    default: "https://cloud.oracle.com"
   oci_home:
-    description: "Optional: Custom base folder for OCI config (.oci) directory. Defaults to ~/.oci"
+    description: "Optional: Custom base home folder under which the action creates the .oci directory. Defaults to the current user's home directory."
     required: false
   oci_profile:
     description: "Optional: Name of the OCI CLI profile to create. Defaults to 'DEFAULT'."

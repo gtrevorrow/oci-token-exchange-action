@@ -35578,21 +35578,7 @@ const cli_1 = __nccwpck_require__(482);
 const types_1 = __nccwpck_require__(5077);
 Object.defineProperty(exports, "TokenExchangeError", ({ enumerable: true, get: function () { return types_1.TokenExchangeError; } }));
 const types_2 = __nccwpck_require__(9860);
-const PLATFORM_CONFIGS = {
-    github: { audience: "https://cloud.oracle.com" },
-    gitlab: {
-        tokenEnvVar: "CI_JOB_JWT_V2",
-        audience: "https://cloud.oracle.com",
-    },
-    bitbucket: {
-        tokenEnvVar: "BITBUCKET_STEP_OIDC_TOKEN",
-        audience: "https://cloud.oracle.com",
-    },
-    local: {
-        tokenEnvVar: "LOCAL_OIDC_TOKEN",
-        audience: "https://cloud.oracle.com",
-    },
-};
+const CLI_PLATFORMS = new Set(["gitlab", "bitbucket", "local"]);
 function resolvePlatformType() {
     return ((0, types_2.resolveInput)("ci_platform") ||
         (0, types_2.resolveInput)("platform") ||
@@ -35601,13 +35587,12 @@ function resolvePlatformType() {
 }
 // Create platform instance based on environment
 function createPlatform(platformType) {
-    const config = PLATFORM_CONFIGS[platformType];
-    if (!config) {
+    if (platformType !== "github" && !CLI_PLATFORMS.has(platformType)) {
         throw new Error(`Unsupported platform: ${platformType}`);
     }
     return platformType === "github"
         ? new github_1.GitHubPlatform()
-        : new cli_1.CLIPlatform(config);
+        : new cli_1.CLIPlatform({ platformType });
 }
 // Generate RSA key pair
 const { publicKey, privateKey } = crypto_1.default.generateKeyPairSync("rsa", {
@@ -35796,14 +35781,14 @@ async function writeAndChmod(filePath, data, perms) {
     const dir = path.dirname(filePath);
     const base = path.basename(filePath);
     const tmpPath = path.join(dir, `.${base}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-    // Write to temp file with permissions if specified
-    await fs.writeFile(tmpPath, data, { mode: perms ? parseInt(perms, 8) : undefined });
-    // If perms not set during write, apply after
-    if (perms) {
-        await fs.chmod(tmpPath, perms);
-    }
+    await fs.writeFile(tmpPath, data);
     // Atomic rename
     await fs.rename(tmpPath, filePath);
+    // fs.writeFile mode only applies when creating a file. Enforce permissions
+    // after rename so existing config/key/token files cannot retain loose modes.
+    if (perms) {
+        await fs.chmod(filePath, perms);
+    }
 }
 async function configureOciCli(platform, config) {
     try {
@@ -35815,14 +35800,20 @@ async function configureOciCli(platform, config) {
         // Normalize file paths for OCI configuration
         const ociConfigDir = path.resolve(path.join(home, ".oci"));
         const ociConfigFile = path.resolve(path.join(ociConfigDir, "config"));
-        // Create a subfolder per profile to store keys and token
+        // Use the OCI CLI session layout for profile-specific key and token material.
         const profileName = config.ociProfile;
         if (!profileName) {
             throw new types_1.TokenExchangeError("OCI profile is not defined; set oci_profile input or OCI_PROFILE");
         }
-        // Validate profile name to prevent path traversal via file paths.
-        if (!/^[A-Za-z0-9_-]+$/.test(profileName)) {
-            throw new types_1.TokenExchangeError("Invalid oci_profile. Allowed characters: letters, numbers, underscore, hyphen.");
+        // Allow common profile names while blocking unsafe filesystem and INI section characters.
+        if (profileName === "." ||
+            profileName === ".." ||
+            profileName.includes("/") ||
+            profileName.includes("\\") ||
+            profileName.includes("[") ||
+            profileName.includes("]") ||
+            /[\r\n\t\0-\x1f\x7f]/.test(profileName)) {
+            throw new types_1.TokenExchangeError("Invalid oci_profile. Path separators, INI section characters, and control characters are not allowed.");
         }
         // Ensure required OCI parameters are provided
         if (!config.ociTenancy) {
@@ -35831,10 +35822,11 @@ async function configureOciCli(platform, config) {
         if (!config.ociRegion) {
             throw new types_1.TokenExchangeError("OCI region is not defined");
         }
-        const profileDir = path.resolve(path.join(ociConfigDir, profileName));
+        const sessionsDir = path.resolve(path.join(ociConfigDir, "sessions"));
+        const profileDir = path.resolve(path.join(sessionsDir, profileName));
         const ociPrivateKeyFile = path.resolve(path.join(profileDir, "private_key.pem"));
         const ociPublicKeyFile = path.resolve(path.join(profileDir, "public_key.pem"));
-        const upstTokenFile = path.resolve(path.join(profileDir, "session"));
+        const upstTokenFile = path.resolve(path.join(profileDir, "token"));
         platform.logger.debug(`OCI Config Dir: ${ociConfigDir}`);
         // Prepare profile object for INI
         const profileObject = {
@@ -35848,7 +35840,7 @@ async function configureOciCli(platform, config) {
         platform.logger.debug(`Preparing OCI config for profile [${profileName}]`);
         try {
             await fs.mkdir(ociConfigDir, { recursive: true });
-            // Also ensure directory for this profile exists
+            await fs.mkdir(sessionsDir, { recursive: true });
             await fs.mkdir(profileDir, { recursive: true });
         }
         catch (error) {
@@ -35917,7 +35909,7 @@ function debugPrintJWTToken(platform, token) {
 // Main function now creates a local platform instance and passes it to subfunctions
 async function main() {
     const platformType = resolvePlatformType();
-    if (!PLATFORM_CONFIGS[platformType]) {
+    if (platformType !== "github" && !CLI_PLATFORMS.has(platformType)) {
         throw new Error(`Unsupported platform: ${platformType}`);
     }
     const platform = createPlatform(platformType);
@@ -35927,13 +35919,18 @@ async function main() {
             "domain_base_url",
             "oci_tenancy",
             "oci_region",
+            "oidc_audience",
             "oci_home",
             "oci_profile",
             "retry_count",
         ].reduce((accumulated, currentInput) => ({
             ...accumulated,
-            [currentInput]: platform.getInput(currentInput, currentInput !== "oci_home" && currentInput !== "oci_profile" && currentInput !== "retry_count"),
+            [currentInput]: platform.getInput(currentInput, currentInput !== "oidc_audience" &&
+                currentInput !== "oci_home" &&
+                currentInput !== "oci_profile" &&
+                currentInput !== "retry_count"),
         }), {});
+        platform.configure(config);
         const retryCount = parseInt(config.retry_count || "0");
         if (isNaN(retryCount) || retryCount < 0) {
             throw new Error("retry_count must be a non-negative number");
@@ -35944,7 +35941,7 @@ async function main() {
         if (!isValidUrl(testUrl)) {
             throw new Error("Invalid domain_base_url provided");
         }
-        const idToken = await platform.getOIDCToken(PLATFORM_CONFIGS[platformType].audience);
+        const idToken = await platform.getOIDCToken();
         platform.logger.debug(`Token obtained from ${platformType}`);
         debugPrintJWTToken(platform, idToken);
         // Calculate the fingerprint of the public key
@@ -35979,10 +35976,11 @@ async function main() {
         };
         await configureOciCli(platform, ociConfig);
         const ociConfigDir = path.resolve(path.join(resolvedOciHome, ".oci"));
-        const profileDir = path.resolve(path.join(ociConfigDir, resolvedOciProfile));
+        const sessionsDir = path.resolve(path.join(ociConfigDir, "sessions"));
+        const profileDir = path.resolve(path.join(sessionsDir, resolvedOciProfile));
         platform.logger.info(`OCI CLI has been configured to use the session token`);
         platform.setOutput("oci_config_path", path.resolve(path.join(ociConfigDir, "config")));
-        platform.setOutput("oci_session_token_path", path.resolve(path.join(profileDir, "session")));
+        platform.setOutput("oci_session_token_path", path.resolve(path.join(profileDir, "token")));
         platform.setOutput("oci_private_key_path", path.resolve(path.join(profileDir, "private_key.pem")));
         // Add success output
         platform.setOutput("configured", "true");
@@ -36013,10 +36011,6 @@ if (false) {}
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.CLIPlatform = void 0;
-/**
- * Copyright (c) 2021, 2025 Oracle and/or its affiliates.
- * Licensed under the Universal Permissive License v1.0 as shown at https://oss.oracle.com/licenses/upl.
- */
 const types_1 = __nccwpck_require__(9860);
 class CLIPlatform {
     constructor(config) {
@@ -36030,6 +36024,11 @@ class CLIPlatform {
             warning: (message) => console.warn(message),
             error: (message) => console.error(message),
         };
+    }
+    get tokenEnvVar() {
+        return this.config.platformType
+            ? CLIPlatform.TOKEN_ENV_VARS[this.config.platformType]
+            : undefined;
     }
     getInput(name, required = false) {
         const value = (0, types_1.resolveInput)(name);
@@ -36048,11 +36047,13 @@ class CLIPlatform {
     isDebug() {
         return process.env.DEBUG === "true";
     }
-    async getOIDCToken(_audience) {
-        if (this.config.tokenEnvVar) {
-            const token = process.env[this.config.tokenEnvVar];
+    configure(_config) { }
+    async getOIDCToken(_options) {
+        const tokenEnvVar = this.tokenEnvVar;
+        if (tokenEnvVar) {
+            const token = process.env[tokenEnvVar];
             if (!token) {
-                throw new Error(`${this.config.tokenEnvVar} environment variable not found`);
+                throw new Error(`${tokenEnvVar} environment variable not found`);
             }
             // Do not log the token here
             return token;
@@ -36064,6 +36065,11 @@ class CLIPlatform {
     }
 }
 exports.CLIPlatform = CLIPlatform;
+CLIPlatform.TOKEN_ENV_VARS = {
+    gitlab: "CI_JOB_JWT_V2",
+    bitbucket: "BITBUCKET_STEP_OIDC_TOKEN",
+    local: "LOCAL_OIDC_TOKEN",
+};
 
 
 /***/ }),
@@ -36113,6 +36119,7 @@ exports.GitHubPlatform = void 0;
  * Licensed under the Universal Permissive License v1.0 as shown at https://oss.oracle.com/licenses/upl.
  */
 const core = __importStar(__nccwpck_require__(2186));
+const DEFAULT_OIDC_AUDIENCE = "https://cloud.oracle.com";
 class GitHubPlatform {
     constructor() {
         this._logger = {
@@ -36134,8 +36141,17 @@ class GitHubPlatform {
     isDebug() {
         return core.isDebug();
     }
-    async getOIDCToken(audience) {
-        const token = await core.getIDToken(audience);
+    configure(config) {
+        this.oidcAudience =
+            typeof config.oidc_audience === "string"
+                ? config.oidc_audience.trim() || undefined
+                : undefined;
+    }
+    async getOIDCToken(options) {
+        const requestedAudience = typeof (options === null || options === void 0 ? void 0 : options.audience) === "string"
+            ? options.audience.trim() || undefined
+            : this.oidcAudience;
+        const token = await core.getIDToken(requestedAudience || DEFAULT_OIDC_AUDIENCE);
         if (!token) {
             throw new Error("Failed to get OIDC token from GitHub Actions");
         }

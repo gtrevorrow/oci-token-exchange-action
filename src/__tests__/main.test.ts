@@ -98,9 +98,18 @@ describe("main.ts", () => {
       // configureOciCli writes config, key, session, and public key artifacts
       expect(fs.writeFile).toHaveBeenCalledTimes(4);
       expect(fs.chmod).toHaveBeenCalledWith(
+        expect.stringContaining("config"),
+        "600",
+      );
+      expect(fs.chmod).toHaveBeenCalledWith(
         expect.stringContaining("private_key.pem"),
         "600",
       );
+      expect(fs.chmod).toHaveBeenCalledWith(
+        expect.stringContaining("token"),
+        "600",
+      );
+      expect(fs.chmod).toHaveBeenCalledTimes(3);
     });
 
     const errorTestCases: [string, () => void, string][] = [
@@ -160,6 +169,30 @@ describe("main.ts", () => {
       );
     });
 
+    it("should reject oci_profile with INI section characters", async () => {
+      testConfig.ociProfile = "bad[profile]";
+
+      await expect(configureOciCli(mockPlatform, testConfig)).rejects.toThrow(
+        "Invalid oci_profile",
+      );
+    });
+
+    it("should reject oci_profile with control characters", async () => {
+      testConfig.ociProfile = "bad\nprofile";
+
+      await expect(configureOciCli(mockPlatform, testConfig)).rejects.toThrow(
+        "Invalid oci_profile",
+      );
+    });
+
+    it("should allow compatible oci_profile names with spaces and dots", async () => {
+      testConfig.ociProfile = "Team Prod.1";
+
+      await expect(
+        configureOciCli(mockPlatform, testConfig),
+      ).resolves.toBeUndefined();
+    });
+
     it("should write correct OCI config content", async () => {
       await configureOciCli(mockPlatform, testConfig);
 
@@ -178,7 +211,8 @@ describe("main.ts", () => {
       expect(content).toContain("tenancy=test-tenancy");
       expect(content).toContain("region=test-region");
       expect(content).toContain("private_key.pem");
-      expect(content).toContain("session");
+      expect(content).toContain(".oci/sessions/DEFAULT/");
+      expect(content).toContain("token");
     });
 
     const profileTestCases: [string, string | undefined][] = [
@@ -223,10 +257,10 @@ describe("main.ts", () => {
         expect(targetProfile).toContain(`tenancy=test-tenancy`);
         expect(targetProfile).toContain(`region=test-region`);
         expect(targetProfile).toContain(
-          `key_file=/mock/home/.oci/${expectedProfileName}/private_key.pem`,
+          `key_file=/mock/home/.oci/sessions/${expectedProfileName}/private_key.pem`,
         );
         expect(targetProfile).toContain(
-          `security_token_file=/mock/home/.oci/${expectedProfileName}/session`,
+          `security_token_file=/mock/home/.oci/sessions/${expectedProfileName}/token`,
         );
       },
     );
@@ -236,7 +270,7 @@ describe("main.ts", () => {
       await configureOciCli(mockPlatform, testConfig);
 
       expect(fs.mkdir).toHaveBeenCalledWith(
-        expect.stringContaining("/TESTPROF"),
+        expect.stringContaining("/sessions/TESTPROF"),
         { recursive: true },
       );
 
@@ -245,12 +279,12 @@ describe("main.ts", () => {
       ).mock.calls;
       expect(
         renameCalls.some((call) =>
-          String(call[1]).endsWith("TESTPROF/private_key.pem"),
+          String(call[1]).endsWith("sessions/TESTPROF/private_key.pem"),
         ),
       ).toBe(true);
       expect(
         renameCalls.some((call) =>
-          String(call[1]).endsWith("TESTPROF/session"),
+          String(call[1]).endsWith("sessions/TESTPROF/token"),
         ),
       ).toBe(true);
     });
@@ -283,8 +317,8 @@ user=ocid1.user.oc1..existing
 fingerprint=existing:fingerprint
 tenancy=ocid1.tenancy.oc1..existing
 region=us-phoenix-1
-key_file=/home/user/.oci/DEFAULT/private_key.pem
-session_token_file=/home/user/.oci/DEFAULT/session
+key_file=/home/user/.oci/sessions/DEFAULT/private_key.pem
+session_token_file=/home/user/.oci/sessions/DEFAULT/token
 
 `);
 
@@ -318,8 +352,8 @@ user=ocid1.user.oc1..olddefault
 fingerprint=old:fingerprint
 tenancy=ocid1.tenancy.oc1..old
 region=us-ashburn-1
-key_file=/home/user/.oci/DEFAULT/old_private_key.pem
-session_token_file=/home/user/.oci/DEFAULT/old_session
+key_file=/home/user/.oci/sessions/DEFAULT/old_private_key.pem
+session_token_file=/home/user/.oci/sessions/DEFAULT/old_token
 
 [OTHER]
 user=ocid1.user.oc1..other
