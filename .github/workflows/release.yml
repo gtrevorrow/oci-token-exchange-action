@@ -40,9 +40,9 @@ jobs:
           # token: ${{ secrets.SEMANTIC_RELEASE_PAT }} # Optional: use PAT if default GITHUB_TOKEN has issues with workflow_run checkout, but usually not needed for same repo.
 
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.14.0'
 
       - name: Install Dependencies
         run: npm ci
