@@ -91,7 +91,7 @@ Use this section as the source of truth for:
 | `oci_tenancy` | `OCI_TENANCY` | `INPUT_OCI_TENANCY` | Yes | - | OCI tenancy OCID. |
 | `oci_region` | `OCI_REGION` | `INPUT_OCI_REGION` | Yes | - | OCI region identifier, for example `us-ashburn-1`. |
 | `oidc_audience` | `OIDC_AUDIENCE` | `INPUT_OIDC_AUDIENCE` | No | `https://cloud.oracle.com` | Audience requested when GitHub Actions mints the OIDC token. This is only used for the GitHub platform. |
-| `oci_home` | `OCI_HOME` | `INPUT_OCI_HOME` | No | `OCI_HOME`, then `HOME`, then OS home directory | Base folder where the tool creates the `.oci` directory. |
+| `oci_home` | `OCI_HOME` | `INPUT_OCI_HOME` | No | `OCI_HOME`, then `HOME`, then OS home directory | Base home folder under which the tool creates the `.oci` directory. Do not pass the `.oci` directory itself. |
 | `oci_profile` | `OCI_PROFILE` | `INPUT_OCI_PROFILE` | No | `DEFAULT` | OCI CLI profile name to create or update. |
 | `retry_count` | `RETRY_COUNT` | `INPUT_RETRY_COUNT` | No | `0` | Number of retry attempts for token exchange failures. |
 
@@ -123,11 +123,22 @@ Use this section as the source of truth for:
 
 ### Variable Resolution
 
-The tool accepts values in this order:
-1. GitHub Action input name such as `ci_platform`
-2. GitHub-style environment variable such as `INPUT_CI_PLATFORM`
-3. Plain environment variable such as `PLATFORM`, `OCI_HOME`, or `RETRY_COUNT`
-4. Input-specific fallbacks such as `HOME` or the OS home directory for `oci_home`
+Variable resolution differs between GitHub Actions and CLI/non-GitHub usage:
+
+1. GitHub Actions path:
+   `GitHubPlatform` uses `@actions/core.getInput(...)`, which reads the GitHub Actions input values exposed through `INPUT_*`.
+   For example, `with: oci_region: ...` is read as `INPUT_OCI_REGION`.
+
+2. CLI / non-GitHub path:
+   `CLIPlatform` uses `resolveInput(...)`, which checks values in this order:
+   - plain environment variable such as `PLATFORM`, `OCI_HOME`, or `RETRY_COUNT`
+   - GitHub-style environment variable such as `INPUT_CI_PLATFORM`
+   - `OCI_*` prefixed environment variable
+   - `OIDC_*` prefixed environment variable
+
+3. Input-specific fallbacks:
+   Some values have additional runtime fallbacks after input resolution.
+   For example, `oci_home` falls back to `HOME` and then the OS home directory.
 
 ### GitHub Actions
 
@@ -143,7 +154,7 @@ Use the example below together with the [Inputs and Outputs](#inputs-and-outputs
     oci_region: ${{ secrets.OCI_REGION }}
     # Optional: Audience requested when GitHub mints the OIDC token
     # oidc_audience: 'https://cloud.oracle.com'
-    # Optional: Custom base folder for OCI config (.oci) directory
+    # Optional: Custom base home folder under which the action creates .oci
     # oci_home: ${{ secrets.OCI_HOME }}
     # Optional: Name of the OCI CLI profile to create. Defaults to 'DEFAULT'.
     # oci_profile: 'DEFAULT' 
