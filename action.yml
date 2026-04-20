@@ -34,6 +34,12 @@ inputs:
     description: "Optional: Number of retry attempts for token exchange. Defaults to '0'."
     required: false
     default: "0"
+  res_type:
+    description: "Optional: Resource type for RPST token exchange. When res_type is set, the action requests an RPST instead of a UPST."
+    required: false
+  rpst_exp:
+    description: "Optional: RPST expiration in integer minutes."
+    required: false
 
 outputs:
   oci_config_path:

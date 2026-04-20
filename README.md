@@ -94,6 +94,10 @@ Use this section as the source of truth for:
 | `oci_home` | `OCI_HOME` | `INPUT_OCI_HOME` | No | `OCI_HOME`, then `HOME`, then OS home directory | Base home folder under which the tool creates the `.oci` directory. Do not pass the `.oci` directory itself. |
 | `oci_profile` | `OCI_PROFILE` | `INPUT_OCI_PROFILE` | No | `DEFAULT` | OCI CLI profile name to create or update. |
 | `retry_count` | `RETRY_COUNT` | `INPUT_RETRY_COUNT` | No | `0` | Number of retry attempts for token exchange failures. |
+| `res_type` | `RES_TYPE` | `INPUT_RES_TYPE` | No | - | Resource type for RPST token exchange, for example `ref_github`. If `res_type` is configured, the tool requests an RPST; otherwise it requests a UPST. |
+| `rpst_exp` | `RPST_EXP` | `INPUT_RPST_EXP` | No | - | Optional RPST expiration in integer minutes. |
+
+If `rpst_exp` is configured, `res_type` must also be configured. If `res_type` is not configured, UPST remains the default.
 
 ### Platform Token Variables
 
@@ -404,7 +408,7 @@ This produces verbose logs (requests/responses, file paths, etc.) to simplify tr
 
 1. Generates an RSA key pair 
 2. Requests a GitHub OIDC JWT token
-3. Exchanges the JWT for an OCI UPST token
+3. Exchanges the JWT for an OCI UPST token, or an RPST token when `res_type` is configured
 4. Configures the OCI CLI with the obtained credentials
 
 ## Semantic Versioning

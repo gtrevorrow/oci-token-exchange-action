@@ -3,7 +3,7 @@ import axios from "axios";
 import {
   TokenExchangeConfig,
   TokenExchangeError,
-  tokenExchangeJwtToUpst,
+  tokenExchange,
 } from "../main";
 import * as crypto from "crypto";
 import { MockPlatform } from "./test-utils";
@@ -14,7 +14,7 @@ jest.mock("axios");
 // Use jest.Mocked for axios to get correct typings
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
-describe("tokenExchangeJwtToUpst", () => {
+describe("tokenExchange", () => {
   let mockPlatform: MockPlatform;
   let testConfig: TokenExchangeConfig;
   let setTimeoutSpy: jest.SpiedFunction<typeof global.setTimeout>;
@@ -72,7 +72,7 @@ describe("tokenExchangeJwtToUpst", () => {
     });
 
     // Call the function
-    const result = await tokenExchangeJwtToUpst(mockPlatform, testConfig);
+    const result = await tokenExchange(mockPlatform, testConfig);
 
     // Verify results
     expect(result).toEqual({ token: "mocked-upst-token" });
@@ -104,6 +104,83 @@ describe("tokenExchangeJwtToUpst", () => {
     );
   });
 
+  it("should successfully exchange JWT for RPST when res_type is configured", async () => {
+    mockedAxios.post.mockResolvedValueOnce({
+      data: { token: "mocked-rpst-token" },
+    });
+
+    const rpstConfig = {
+      ...testConfig,
+      rpstResourceType: "ref_github",
+    };
+
+    const result = await tokenExchange(mockPlatform, rpstConfig);
+
+    expect(result).toEqual({ token: "mocked-rpst-token" });
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      testConfig.tokenExchangeURL,
+      {
+        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+        requested_token_type: "urn:oci:token-type:oci-rpst",
+        public_key: testConfig.ociPublicKey,
+        subject_token: testConfig.subjectToken,
+        subject_token_type: "jwt",
+        res_type: "ref_github",
+      },
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Basic ${testConfig.clientCred}`,
+        },
+      },
+    );
+  });
+
+  it("should include rpst_exp when configured for RPST", async () => {
+    mockedAxios.post.mockResolvedValueOnce({
+      data: { token: "mocked-rpst-token" },
+    });
+
+    await tokenExchange(mockPlatform, {
+      ...testConfig,
+      rpstResourceType: "ref_github",
+      rpstExpiration: "60",
+    });
+
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      testConfig.tokenExchangeURL,
+      expect.objectContaining({
+        requested_token_type: "urn:oci:token-type:oci-rpst",
+        res_type: "ref_github",
+        rpst_exp: "60",
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it("should require res_type when rpst_exp is configured", async () => {
+    await expect(
+      tokenExchange(mockPlatform, {
+        ...testConfig,
+        rpstExpiration: "60",
+      }),
+    ).rejects.toThrow(
+      "RPST token exchange requires rpstResourceType (res_type input)",
+    );
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+  });
+
+  it("should reject a non-integer RPST expiration", async () => {
+    await expect(
+      tokenExchange(mockPlatform, {
+        ...testConfig,
+        rpstResourceType: "ref_github",
+        rpstExpiration: "one hour",
+      }),
+    ).rejects.toThrow("rpst_exp must be a positive integer number of minutes");
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+  });
+
   it("should redact tokens in debug logs", async () => {
     const jwtHeader = Buffer.from(
       JSON.stringify({ alg: "RS256", typ: "JWT" }),
@@ -125,7 +202,7 @@ describe("tokenExchangeJwtToUpst", () => {
       data: { token: jwtToken },
     });
 
-    await tokenExchangeJwtToUpst(mockPlatform, testConfig);
+    await tokenExchange(mockPlatform, testConfig);
 
     const debugCalls = (mockPlatform.logger.debug as jest.Mock).mock.calls.map(
       (call) => String(call[0]),
@@ -159,7 +236,7 @@ describe("tokenExchangeJwtToUpst", () => {
       });
 
     // Call the function
-    const result = await tokenExchangeJwtToUpst(mockPlatform, testConfig);
+    const result = await tokenExchange(mockPlatform, testConfig);
 
     // Verify results
     expect(result).toEqual({ token: "mocked-upst-token-after-retry" });
@@ -209,11 +286,11 @@ describe("tokenExchangeJwtToUpst", () => {
 
       if (shouldThrowTokenExchangeError) {
         await expect(
-          tokenExchangeJwtToUpst(mockPlatform, quickTestConfig),
+          tokenExchange(mockPlatform, quickTestConfig),
         ).rejects.toThrow(TokenExchangeError);
       } else {
         await expect(
-          tokenExchangeJwtToUpst(mockPlatform, quickTestConfig),
+          tokenExchange(mockPlatform, quickTestConfig),
         ).rejects.toThrow(errorMessage);
       }
     },
@@ -226,7 +303,7 @@ describe("tokenExchangeJwtToUpst", () => {
 
     const noRetryConfig = { ...testConfig, retryCount: 0 };
     await expect(
-      tokenExchangeJwtToUpst(mockPlatform, noRetryConfig),
+      tokenExchange(mockPlatform, noRetryConfig),
     ).rejects.toThrow("Request timeout");
   });
 });

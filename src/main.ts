@@ -14,7 +14,8 @@ import {
   TokenExchangeConfig,
   OciConfig,
   ConfigInputs,
-  UpstTokenResponse,
+  OciSessionTokenType,
+  TokenExchangeResponse,
   TokenExchangeError,
 } from "./types";
 import { resolveInput } from "./platforms/types";
@@ -74,6 +75,52 @@ function isValidUrl(url: string): boolean {
   } catch (_) {
     return false;
   }
+}
+
+type RpstExchangeFields = {
+  res_type: string;
+  rpst_exp?: string;
+};
+
+function resolveRpstExchangeFields({
+  rpstResourceType,
+  rpstExpiration,
+}: Pick<
+  TokenExchangeConfig,
+  "rpstResourceType" | "rpstExpiration"
+>): RpstExchangeFields | undefined {
+  const trimmedResourceType =
+    typeof rpstResourceType === "string" ? rpstResourceType.trim() : "";
+  const trimmedExpiration =
+    typeof rpstExpiration === "string" ? rpstExpiration.trim() : "";
+
+  if (!trimmedResourceType && !trimmedExpiration) {
+    return undefined;
+  }
+
+  if (!trimmedResourceType) {
+    throw new Error(
+      "RPST token exchange requires rpstResourceType (res_type input)",
+    );
+  }
+
+  if (
+    trimmedExpiration &&
+    (!/^\d+$/.test(trimmedExpiration) || Number(trimmedExpiration) <= 0)
+  ) {
+    throw new Error("rpst_exp must be a positive integer number of minutes");
+  }
+
+  return {
+    res_type: trimmedResourceType,
+    ...(trimmedExpiration ? { rpst_exp: trimmedExpiration } : {}),
+  };
+}
+
+function getRequestedTokenTypeUrn(
+  requestedTokenType: OciSessionTokenType,
+): string {
+  return `urn:oci:token-type:oci-${requestedTokenType}`;
 }
 
 type TokenSummary =
@@ -147,8 +194,8 @@ function summarizeToken(token: string): TokenSummary {
   };
 }
 
-// Function to exchange JWT for OCI UPST token
-export async function tokenExchangeJwtToUpst(
+// Function to exchange JWT for an OCI session token.
+export async function tokenExchange(
   platform: Platform,
   {
     tokenExchangeURL,
@@ -156,9 +203,18 @@ export async function tokenExchangeJwtToUpst(
     ociPublicKey,
     subjectToken,
     retryCount,
+    rpstResourceType,
+    rpstExpiration,
     currentAttempt = 0,
   }: TokenExchangeConfig,
-): Promise<UpstTokenResponse> {
+): Promise<TokenExchangeResponse> {
+  const rpstExchangeFields = resolveRpstExchangeFields({
+    rpstResourceType,
+    rpstExpiration,
+  });
+  const requestedTokenType: OciSessionTokenType = rpstExchangeFields
+    ? "rpst"
+    : "upst";
   const headers = {
     "Content-Type": "application/x-www-form-urlencoded",
     Authorization: `Basic ${clientCred}`,
@@ -166,10 +222,11 @@ export async function tokenExchangeJwtToUpst(
 
   const data = {
     grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
-    requested_token_type: "urn:oci:token-type:oci-upst",
+    requested_token_type: getRequestedTokenTypeUrn(requestedTokenType),
     public_key: ociPublicKey,
     subject_token: subjectToken,
     subject_token_type: "jwt",
+    ...rpstExchangeFields,
   };
   // Debug log redacts token contents while still providing helpful metadata.
   const redactedRequest = {
@@ -202,18 +259,20 @@ export async function tokenExchangeJwtToUpst(
         `Token exchange failed, retrying ... (${retryCount - attemptCounter} retries left)`,
       );
       await delay(attemptCounter + 1);
-      return tokenExchangeJwtToUpst(platform, {
+      return tokenExchange(platform, {
         // Promise flattening
         tokenExchangeURL,
         clientCred,
         ociPublicKey,
         subjectToken: subjectToken,
         retryCount,
+        rpstResourceType,
+        rpstExpiration,
         currentAttempt: attemptCounter + 1,
       });
     } else {
       platform.logger.error(
-        "Failed to exchange JWT for UPST after multiple attempts",
+        `Failed to exchange JWT for ${requestedTokenType.toUpperCase()} after multiple attempts`,
       );
       if (error instanceof Error) {
         throw new TokenExchangeError(
@@ -363,7 +422,7 @@ export async function configureOciCli(
     const ociPublicKeyFile: string = path.resolve(
       path.join(profileDir, "public_key.pem"),
     );
-    const upstTokenFile: string = path.resolve(path.join(profileDir, "token"));
+    const sessionTokenFile: string = path.resolve(path.join(profileDir, "token"));
 
     platform.logger.debug(`OCI Config Dir: ${ociConfigDir}`);
 
@@ -374,7 +433,7 @@ export async function configureOciCli(
       key_file: ociPrivateKeyFile,
       tenancy: config.ociTenancy,
       region: config.ociRegion,
-      security_token_file: upstTokenFile,
+      security_token_file: sessionTokenFile,
     };
 
     platform.logger.debug(`Preparing OCI config for profile [${profileName}]`);
@@ -403,7 +462,7 @@ export async function configureOciCli(
     if (!publicKeyPem || typeof publicKeyPem !== "string") {
       throw new Error("Public key export failed or invalid type");
     }
-    if (!config.upstToken || typeof config.upstToken !== "string") {
+    if (!config.sessionToken || typeof config.sessionToken !== "string") {
       throw new Error("Session token is undefined or invalid type");
     }
     if (!profileObject || typeof profileObject !== "object") {
@@ -429,7 +488,7 @@ export async function configureOciCli(
       // Write keys and token
       await writeAndChmod(ociPrivateKeyFile, privateKeyPem, "600");
       await writeAndChmod(ociPublicKeyFile, publicKeyPem);
-      await writeAndChmod(upstTokenFile, config.upstToken, "600");
+      await writeAndChmod(sessionTokenFile, config.sessionToken, "600");
     } catch (err) {
       throw new TokenExchangeError(
         "Failed to write OCI configuration files",
@@ -482,15 +541,19 @@ export async function main(): Promise<void> {
       "oci_home",
       "oci_profile",
       "retry_count",
+      "res_type",
+      "rpst_exp",
     ].reduce<Partial<ConfigInputs>>(
       (accumulated, currentInput) => ({
         ...accumulated,
         [currentInput]: platform.getInput(
           currentInput,
           currentInput !== "oidc_audience" &&
-            currentInput !== "oci_home" &&
-            currentInput !== "oci_profile" &&
-            currentInput !== "retry_count",
+          currentInput !== "oci_home" &&
+          currentInput !== "oci_profile" &&
+          currentInput !== "retry_count" &&
+          currentInput !== "res_type" &&
+          currentInput !== "rpst_exp",
         ),
       }),
       {},
@@ -502,6 +565,13 @@ export async function main(): Promise<void> {
     if (isNaN(retryCount) || retryCount < 0) {
       throw new Error("retry_count must be a non-negative number");
     }
+    const rpstExchangeFields = resolveRpstExchangeFields({
+      rpstResourceType: config.res_type,
+      rpstExpiration: config.rpst_exp,
+    });
+    const requestedTokenType: OciSessionTokenType = rpstExchangeFields
+      ? "rpst"
+      : "upst";
 
     // Validate the tokenExchangeURL
     const testUrl = `${config.domain_base_url}/oauth2/v1/token`;
@@ -522,8 +592,8 @@ export async function main(): Promise<void> {
     const publicKeyB64: string = encodePublicKeyToBase64();
     platform.logger.debug(`Public Key B64: ${publicKeyB64}`);
 
-    //Exchange platform OIDC token for OCI UPST
-    const upstToken: UpstTokenResponse = await tokenExchangeJwtToUpst(
+    // Exchange platform OIDC token for the requested OCI session token.
+    const sessionTokenResponse: TokenExchangeResponse = await tokenExchange(
       platform,
       {
         tokenExchangeURL: `${config.domain_base_url}/oauth2/v1/token`,
@@ -533,9 +603,13 @@ export async function main(): Promise<void> {
         ociPublicKey: publicKeyB64,
         subjectToken: idToken,
         retryCount,
+        rpstResourceType: config.res_type,
+        rpstExpiration: config.rpst_exp,
       },
     );
-    platform.logger.info(`OCI issued a Session Token `);
+    platform.logger.info(
+      `OCI issued a ${requestedTokenType.toUpperCase()} Session Token`,
+    );
 
     // Resolve OCI home and profile, falling back to environment or defaults
     const resolvedOciHome =
@@ -552,7 +626,7 @@ export async function main(): Promise<void> {
       ociProfile: resolvedOciProfile,
       privateKey,
       publicKey,
-      upstToken: upstToken.token,
+      sessionToken: sessionTokenResponse.token,
       ociFingerprint,
       ociTenancy: config.oci_tenancy,
       ociRegion: config.oci_region,

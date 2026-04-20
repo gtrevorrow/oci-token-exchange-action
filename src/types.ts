@@ -4,6 +4,8 @@
  */
 import crypto from "crypto";
 
+export type OciSessionTokenType = "upst" | "rpst";
+
 /**
  * Configuration for token exchange operation
  */
@@ -32,6 +34,16 @@ export interface TokenExchangeConfig {
    * Number of retry attempts for token exchange
    */
   retryCount: number;
+
+  /**
+   * Resource type for RPST token exchange
+   */
+  rpstResourceType?: string;
+
+  /**
+   * RPST expiration in minutes
+   */
+  rpstExpiration?: string;
 
   /**
    * Current attempt number (used internally for retries)
@@ -64,9 +76,9 @@ export interface OciConfig {
   publicKey: crypto.KeyObject;
 
   /**
-   * User principal security token obtained from token exchange
+   * OCI session token obtained from token exchange
    */
-  upstToken: string;
+  sessionToken: string;
 
   /**
    * Fingerprint of the public key
@@ -110,14 +122,24 @@ export interface ConfigInputs {
    * Number of retry attempts for token exchange. Defaults to 0.
    */
   retry_count?: string;
+
+  /**
+   * Resource type for RPST token exchange
+   */
+  res_type?: string;
+
+  /**
+   * RPST expiration in minutes
+   */
+  rpst_exp?: string;
 }
 
 /**
  * Response from token exchange operation
  */
-export interface UpstTokenResponse {
+export interface TokenExchangeResponse {
   /**
-   * The exchanged UPST token
+   * The exchanged OCI session token
    */
   token: string;
 }
