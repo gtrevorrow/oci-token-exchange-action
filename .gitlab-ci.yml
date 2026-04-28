@@ -21,7 +21,7 @@ deploy:
     # Shell runners must already provide node and npm on the host.
     # This example models a consuming GitLab project, not this repository.
     # It assumes a beta version has already been published to npm.
-    - npm install -g @gtrevorrow/oci-token-exchange@beta
+    - npm install --no-save @gtrevorrow/oci-token-exchange@beta
 
     # Map the requested GitLab ID token to the variable the CLI expects
     - export CI_JOB_JWT_V2="$ID_TOKEN"
@@ -36,7 +36,7 @@ deploy:
       OCI_HOME=${CI_PROJECT_DIR} \
       OCI_PROFILE=${OCI_PROFILE} \
       RETRY_COUNT=${RETRY_COUNT:-3} \
-      oci-token-exchange
+      npx --no-install oci-token-exchange
 
     # Verify OCI CLI configuration works with the generated security token.
     # The action writes OCI config under $CI_PROJECT_DIR/.oci/config.
