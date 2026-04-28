@@ -19,9 +19,9 @@ deploy:
 
     # Docker runners get Node from image: node:20.
     # Shell runners must already provide node and npm on the host.
-    # Build the CLI from the commit GitLab checked out for this job.
-    - npm ci
-    - npm run build:cli
+    # This example models a consuming GitLab project, not this repository.
+    # It assumes a beta version has already been published to npm.
+    - npm install -g @gtrevorrow/oci-token-exchange@beta
 
     # Map the requested GitLab ID token to the variable the CLI expects
     - export CI_JOB_JWT_V2="$ID_TOKEN"
@@ -36,16 +36,14 @@ deploy:
       OCI_HOME=${CI_PROJECT_DIR} \
       OCI_PROFILE=${OCI_PROFILE} \
       RETRY_COUNT=${RETRY_COUNT:-3} \
-      node dist/cli.js
+      oci-token-exchange
 
     # Verify OCI CLI configuration works with the generated security token.
     # The action writes OCI config under $CI_PROJECT_DIR/.oci/config.
     - oci --auth security_token --config-file "$CI_PROJECT_DIR/.oci/config" --profile "${OCI_PROFILE:-DEFAULT}" os ns get
 
   rules:
-    - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_BRANCH == "development"
-    - if: $CI_COMMIT_BRANCH =~ /^feature\/.+$/
 
   id_tokens:
     ID_TOKEN:
