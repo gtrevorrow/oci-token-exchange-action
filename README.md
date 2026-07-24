@@ -59,11 +59,9 @@ Pinning guidance:
 ```bash
 npm install -g @gtrevorrow/oci-token-exchange
 
-# Install a specific release globally
-npm install -g @gtrevorrow/oci-token-exchange@1.2.2
-
-# Install the release used by the CI examples below
-npm install -g @gtrevorrow/oci-token-exchange@1.2.2
+# Install the published release tag you want to use.
+# Replace <release-tag> with your chosen release tag or version.
+npm install -g @gtrevorrow/oci-token-exchange@<release-tag>
 ```
 
 ## Usage
@@ -165,9 +163,10 @@ Use the example below together with the [Inputs and Outputs](#inputs-and-outputs
 
 ### GitLab CI
 
-This example mirrors [.gitlab-ci.yml](.gitlab-ci.yml). It installs the pinned
-published release (`1.2.2`) without modifying the consumer project's manifest,
-maps the GitLab ID token to `CI_JOB_JWT_V2`, and invokes the package's installed binary.
+This example follows the working setup in [.gitlab-ci.yml](.gitlab-ci.yml).
+Replace `<release-tag>` with the published release tag or version you want to
+use. The package is installed without modifying the consumer project's manifest,
+the GitLab ID token is mapped to `CI_JOB_JWT_V2`, and the installed binary runs with `npx --no-install`.
 
 ```yaml
 image: node:20
@@ -187,7 +186,7 @@ deploy:
   script:
     - *oci_setup
 
-    - npm install --no-save @gtrevorrow/oci-token-exchange@1.2.2
+    - npm install --no-save @gtrevorrow/oci-token-exchange@<release-tag>
 
     - export CI_JOB_JWT_V2="$ID_TOKEN"
 
@@ -214,10 +213,10 @@ deploy:
 
 ### Bitbucket Pipelines
 
-This example mirrors [bitbucket-pipelines.yml](bitbucket-pipelines.yml). The
-default and `main` pipelines both use the pinned published release (`1.2.2`).
-Both invoke the locally installed package with
-`npx --no-install` and explicitly verify the generated OCI configuration.
+This example follows the working setup in [bitbucket-pipelines.yml](bitbucket-pipelines.yml).
+Replace `<release-tag>` with the published release tag or version you want to
+use. Both pipelines invoke the locally installed package with `npx --no-install`
+and explicitly verify the generated OCI configuration.
 
 ```yaml
 image: node:20
@@ -231,7 +230,7 @@ pipelines:
           - curl -LO https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh
           - bash install.sh --accept-all-defaults
           - export PATH=$PATH:/root/bin
-          - npm install --no-save @gtrevorrow/oci-token-exchange@1.2.2
+          - npm install --no-save @gtrevorrow/oci-token-exchange@<release-tag>
           - |
             PLATFORM=bitbucket \
             OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \
@@ -258,7 +257,7 @@ pipelines:
             - curl -LO https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh
             - bash install.sh --accept-all-defaults
             - export PATH=$PATH:/root/bin
-            - npm install --no-save @gtrevorrow/oci-token-exchange@1.2.2
+            - npm install --no-save @gtrevorrow/oci-token-exchange@<release-tag>
             - |
               PLATFORM=bitbucket \
               OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \
