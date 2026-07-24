@@ -27,8 +27,13 @@ jobs:
     # 3. Installs dependencies (including @vercel/ncc for bundling)
     - run: npm ci
     
-    # 4. Builds your action using ncc (creates dist/main.js and dist/cli.js)
+    # 4. Builds the bundled action entrypoint at dist/index.js
     - run: npm run build
+
+    # Ensure pull requests commit the bundle generated from their source changes
+    - name: Verify committed bundle
+      if: github.event_name == 'pull_request'
+      run: git diff --exit-code -- dist/
     
     # Run tests
     - name: Run tests
