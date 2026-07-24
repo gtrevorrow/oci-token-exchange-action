@@ -9,11 +9,7 @@
   - [Inputs And Outputs](#inputs-and-outputs)
   - [GitHub Actions](#github-actions)
   - [GitLab CI](#gitlab-ci)
-    - [Option 1: Building from Source](#option-1-building-from-source)
-    - [Option 2: Using npm Package](#option-2-using-npm-package)
   - [Bitbucket Pipelines](#bitbucket-pipelines)
-    - [Option 1: Building from Source](#option-1-building-from-source-1)
-    - [Option 2: Using npm Package](#option-2-using-npm-package-1)
   - [Standalone CLI Usage](#standalone-cli-usage)
   - [Debugging](#debugging)
 - [How it Works](#how-it-works)
@@ -169,40 +165,32 @@ Use the example below together with the [Inputs and Outputs](#inputs-and-outputs
 
 ### GitLab CI
 
-#### Option 1: Building from Source
-
-This example builds the CLI from the checked-out repository and then runs it.
-It is written to reflect typical GitLab Docker-runner usage. If you use a shell
-runner instead, the host must already provide `node`, `npm`, `python3`, and
-`python3 -m venv`.
-
-See [Inputs and Outputs](#inputs-and-outputs) for the full environment variable contract and required GitLab token mapping.
+This example mirrors [.gitlab-ci.yml](.gitlab-ci.yml). It installs the published
+beta package without modifying the consumer project's manifest, maps the GitLab
+ID token to `CI_JOB_JWT_V2`, and invokes the package's installed binary.
 
 ```yaml
 image: node:20
 
+variables:
+  HUSKY: "0"
+
 .oci_setup: &oci_setup |
+  # Docker runners should only need Python 3 + venv support in the job image.
+  # Shell runners must provide python3 and python3 -m venv on the host.
   python3 -m venv .oci-cli
   . .oci-cli/bin/activate
   python -m pip install --upgrade pip
   pip install oci-cli
-
-variables:
-  HUSKY: "0"
 
 deploy:
   script:
-    # Install OCI CLI
     - *oci_setup
-    
-    # Build the token exchange CLI from the checked-out commit
-    - npm ci
-    - npm run build:cli
-    
-    # Map the GitLab ID token to the variable the CLI expects
+
+    - npm install --no-save @gtrevorrow/oci-token-exchange@beta
+
     - export CI_JOB_JWT_V2="$ID_TOKEN"
-    
-    # Run the built CLI
+
     - |
       PLATFORM=gitlab \
       OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \
@@ -210,122 +198,26 @@ deploy:
       OCI_TENANCY=${OCI_TENANCY} \
       OCI_REGION=${OCI_REGION} \
       OCI_HOME=${CI_PROJECT_DIR} \
-      OCI_PROFILE=${OCI_PROFILE:-DEFAULT} \
+      OCI_PROFILE=${OCI_PROFILE} \
       RETRY_COUNT=${RETRY_COUNT:-3} \
-      node dist/cli.js
-    
-    # Verify OCI CLI configuration works
+      npx --no-install oci-token-exchange
+
     - oci --auth security_token --config-file "$CI_PROJECT_DIR/.oci/config" --profile "${OCI_PROFILE:-DEFAULT}" os ns get
-  
+
   rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-  
+    - if: $CI_COMMIT_BRANCH == "develop"
+
   id_tokens:
     ID_TOKEN:
-      aud: https://cloud.oracle.com/gitlab
-```
-
-#### Option 2: Using npm Package
-
-This example installs the CLI tool directly from npm.
-
-```yaml
-image: node:20
-
-.oci_setup: &oci_setup |
-  python3 -m venv .oci-cli
-  . .oci-cli/bin/activate
-  python -m pip install --upgrade pip
-  pip install oci-cli
-
-variables:
-  HUSKY: "0"
-
-deploy_npm:
-  script:
-    # Install OCI CLI
-    - *oci_setup
-    
-    # Install the token exchange CLI from npm
-    - npm install -g @gtrevorrow/oci-token-exchange
-    
-    # Map the GitLab ID token to the variable the CLI expects
-    - export CI_JOB_JWT_V2="$ID_TOKEN"
-    
-    # Run the installed CLI
-    - |
-      PLATFORM=gitlab \
-      OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \
-      DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \
-      OCI_TENANCY=${OCI_TENANCY} \
-      OCI_REGION=${OCI_REGION} \
-      OCI_HOME=${CI_PROJECT_DIR} \
-      OCI_PROFILE=${OCI_PROFILE:-DEFAULT} \
-      RETRY_COUNT=${RETRY_COUNT:-3} \
-      oci-token-exchange
-    
-    # Verify OCI CLI configuration works
-    - oci --auth security_token --config-file "$CI_PROJECT_DIR/.oci/config" --profile "${OCI_PROFILE:-DEFAULT}" os ns get
-  
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-  
-  id_tokens:
-    ID_TOKEN:
-      aud: https://cloud.oracle.com/gitlab
+      aud: https://cloud.oracle.com/
 ```
 
 ### Bitbucket Pipelines
 
-#### Option 1: Building from Source
-
-This example clones the repository, builds the CLI, and then runs it.
-
-See [Inputs and Outputs](#inputs-and-outputs) for the full environment variable contract and Bitbucket OIDC token requirement.
-
-```yaml
-image: node:20
-
-pipelines:
-  default:
-    - step:
-        name: Setup OCI CLI with OIDC Token Exchange (Build from Source)
-        oidc: true  # Enable OIDC for Bitbucket
-        script:
-          # Setup OCI CLI
-          - curl -LO https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh
-          - bash install.sh --accept-all-defaults
-          - export PATH=$PATH:/root/bin
-          
-          # Clone and build the token exchange CLI from GitHub
-          - git clone https://github.com/gtrevorrow/oci-token-exchange-action.git
-          - cd oci-token-exchange-action
-          - npm ci
-          - npm run build:cli
-          
-          # Run the built CLI for token exchange
-          - >
-            cd dist &&
-            export PLATFORM=bitbucket &&
-            export OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} &&
-            export DOMAIN_BASE_URL=${DOMAIN_BASE_URL} &&
-            export OCI_TENANCY=${OCI_TENANCY} &&
-            export OCI_REGION=${OCI_REGION} &&
-            export RETRY_COUNT=3
-          - node cli.js || exit 1
-          
-          # Verify OCI CLI works with generated token
-          - cd ../..
-          - oci os ns get
-        
-        # Preserve credentials for subsequent steps
-        artifacts:
-          - ".oci/**"
-```
-
-#### Option 2: Using npm Package
-
-This example installs the CLI tool directly from npm.
+This example mirrors [bitbucket-pipelines.yml](bitbucket-pipelines.yml). The
+default pipeline uses the published beta package; the `main` branch uses the
+current published release. Both invoke the locally installed package with
+`npx --no-install` and explicitly verify the generated OCI configuration.
 
 ```yaml
 image: node:20
@@ -333,33 +225,56 @@ image: node:20
 pipelines:
   default:
     - step:
-        name: Setup OCI CLI with OIDC Token Exchange (npm Package)
-        oidc: true  # Enable OIDC for Bitbucket
+        name: Setup OCI CLI with OIDC Token Exchange
+        oidc: true
         script:
-          # Setup OCI CLI
           - curl -LO https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh
           - bash install.sh --accept-all-defaults
           - export PATH=$PATH:/root/bin
-          
-          # Install the token exchange CLI from npm
-          - npm install -g @gtrevorrow/oci-token-exchange
-          
-          # Run the installed CLI for token exchange
-          - >
-            export PLATFORM=bitbucket &&
-            export OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} &&
-            export DOMAIN_BASE_URL=${DOMAIN_BASE_URL} &&
-            export OCI_TENANCY=${OCI_TENANCY} &&
-            export OCI_REGION=${OCI_REGION} &&
-            export RETRY_COUNT=3
-          - oci-token-exchange || exit 1
-          
-          # Verify OCI CLI works with generated token
-          - oci os ns get
-        
-        # Preserve credentials for subsequent steps
+          - npm install --no-save @gtrevorrow/oci-token-exchange@beta
+          - |
+            PLATFORM=bitbucket \
+            OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \
+            DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \
+            OCI_TENANCY=${OCI_TENANCY} \
+            OCI_REGION=${OCI_REGION} \
+            OCI_HOME=${BITBUCKET_CLONE_DIR} \
+            OCI_PROFILE=${OCI_PROFILE} \
+            RETRY_COUNT=${RETRY_COUNT:-3} \
+            npx --no-install oci-token-exchange
+          - oci --auth security_token --config-file "$BITBUCKET_CLONE_DIR/.oci/config" --profile "${OCI_PROFILE:-DEFAULT}" os ns get
         artifacts:
           - ".oci/**"
+          - "private_key.pem"
+          - "public_key.pem"
+          - "session"
+
+  branches:
+    main:
+      - step:
+          name: Setup OCI CLI with Published Package (Production)
+          oidc: true
+          script:
+            - curl -LO https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh
+            - bash install.sh --accept-all-defaults
+            - export PATH=$PATH:/root/bin
+            - npm install --no-save @gtrevorrow/oci-token-exchange
+            - |
+              PLATFORM=bitbucket \
+              OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \
+              DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \
+              OCI_TENANCY=${OCI_TENANCY} \
+              OCI_REGION=${OCI_REGION} \
+              OCI_HOME=${BITBUCKET_CLONE_DIR} \
+              OCI_PROFILE=${OCI_PROFILE} \
+              RETRY_COUNT=${RETRY_COUNT:-3} \
+              npx --no-install oci-token-exchange
+            - oci --auth security_token --config-file "$BITBUCKET_CLONE_DIR/.oci/config" --profile "${OCI_PROFILE:-DEFAULT}" os ns get
+          artifacts:
+            - ".oci/**"
+            - "private_key.pem"
+            - "public_key.pem"
+            - "session"
 ```
 
 ### Standalone CLI Usage
