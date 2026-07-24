@@ -59,11 +59,11 @@ Pinning guidance:
 ```bash
 npm install -g @gtrevorrow/oci-token-exchange
 
-# Install a specific version globally (e.g., 1.2.3)
-npm install -g @gtrevorrow/oci-token-exchange@1.2.3
+# Install a specific release globally
+npm install -g @gtrevorrow/oci-token-exchange@1.2.2
 
-# Install a version with a specific tag (e.g., beta)
-npm install -g @gtrevorrow/oci-token-exchange@beta
+# Install the release used by the CI examples below
+npm install -g @gtrevorrow/oci-token-exchange@1.2.2
 ```
 
 ## Usage
@@ -165,9 +165,9 @@ Use the example below together with the [Inputs and Outputs](#inputs-and-outputs
 
 ### GitLab CI
 
-This example mirrors [.gitlab-ci.yml](.gitlab-ci.yml). It installs the published
-beta package without modifying the consumer project's manifest, maps the GitLab
-ID token to `CI_JOB_JWT_V2`, and invokes the package's installed binary.
+This example mirrors [.gitlab-ci.yml](.gitlab-ci.yml). It installs the pinned
+published release (`1.2.2`) without modifying the consumer project's manifest,
+maps the GitLab ID token to `CI_JOB_JWT_V2`, and invokes the package's installed binary.
 
 ```yaml
 image: node:20
@@ -187,7 +187,7 @@ deploy:
   script:
     - *oci_setup
 
-    - npm install --no-save @gtrevorrow/oci-token-exchange@beta
+    - npm install --no-save @gtrevorrow/oci-token-exchange@1.2.2
 
     - export CI_JOB_JWT_V2="$ID_TOKEN"
 
@@ -215,8 +215,8 @@ deploy:
 ### Bitbucket Pipelines
 
 This example mirrors [bitbucket-pipelines.yml](bitbucket-pipelines.yml). The
-default pipeline uses the published beta package; the `main` branch uses the
-current published release. Both invoke the locally installed package with
+default and `main` pipelines both use the pinned published release (`1.2.2`).
+Both invoke the locally installed package with
 `npx --no-install` and explicitly verify the generated OCI configuration.
 
 ```yaml
@@ -231,7 +231,7 @@ pipelines:
           - curl -LO https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh
           - bash install.sh --accept-all-defaults
           - export PATH=$PATH:/root/bin
-          - npm install --no-save @gtrevorrow/oci-token-exchange@beta
+          - npm install --no-save @gtrevorrow/oci-token-exchange@1.2.2
           - |
             PLATFORM=bitbucket \
             OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \
@@ -258,7 +258,7 @@ pipelines:
             - curl -LO https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh
             - bash install.sh --accept-all-defaults
             - export PATH=$PATH:/root/bin
-            - npm install --no-save @gtrevorrow/oci-token-exchange
+            - npm install --no-save @gtrevorrow/oci-token-exchange@1.2.2
             - |
               PLATFORM=bitbucket \
               OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \

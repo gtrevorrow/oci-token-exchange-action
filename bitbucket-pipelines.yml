@@ -20,8 +20,8 @@ pipelines:
           - bash install.sh --accept-all-defaults
           - export PATH=$PATH:/root/bin
           
-          # Install the published beta CLI used by the develop pipeline.
-          - npm install --no-save @gtrevorrow/oci-token-exchange@beta
+          # Install the pinned published CLI release used by this pipeline.
+          - npm install --no-save @gtrevorrow/oci-token-exchange@1.2.2
           
           # Run the CLI with proper environment variables
           - |
@@ -54,8 +54,8 @@ pipelines:
             - bash install.sh --accept-all-defaults
             - export PATH=$PATH:/root/bin
             
-            # Install the current published CLI release.
-            - npm install --no-save @gtrevorrow/oci-token-exchange
+            # Install the pinned published CLI release.
+            - npm install --no-save @gtrevorrow/oci-token-exchange@1.2.2
             
             # Run the CLI
             - |
