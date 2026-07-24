@@ -183,6 +183,21 @@ jobs:
           echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
           echo "New version released: $VERSION"
 
+      - name: Update npm major release dist-tag (e.g., major-v1)
+        if: env.RELEASE_VERSION
+        run: |
+          VERSION="${RELEASE_VERSION#v}"
+          MAJOR_VERSION=$(echo "$VERSION" | sed -E 's/([0-9]+)\..*/\1/')
+          NPM_MAJOR_TAG="major-v$MAJOR_VERSION"
+          PACKAGE_NAME=$(node -p 'require("./package.json").name')
+
+          echo "Updating npm dist-tag $NPM_MAJOR_TAG to $PACKAGE_NAME@$VERSION"
+          npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+          npm dist-tag add "$PACKAGE_NAME@$VERSION" "$NPM_MAJOR_TAG"
+        env:
+          RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       # Add a step to debug outputs if the problem persists
       - name: Dump semantic-release outputs
         if: always()
