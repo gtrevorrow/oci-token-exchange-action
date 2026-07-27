@@ -173,7 +173,7 @@ use. The package is installed without modifying the consumer project's manifest,
 the GitLab ID token is mapped to `CI_JOB_JWT_V2`, and the installed binary runs with `npx --no-install`.
 
 ```yaml
-image: node:20
+image: node:24
 
 variables:
   HUSKY: "0"
@@ -223,7 +223,7 @@ use. Both pipelines invoke the locally installed package with `npx --no-install`
 and explicitly verify the generated OCI configuration.
 
 ```yaml
-image: node:20
+image: node:24
 
 pipelines:
   default:

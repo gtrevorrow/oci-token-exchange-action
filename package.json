@@ -28,7 +28,7 @@
         "oci-token-exchange": "./dist/cli.js"
     },
     "engines": {
-        "node": ">=20"
+        "node": ">=22.14.0"
     },
     "scripts": {
         "build:action": "ncc build src/main.ts -o dist/action --source-map --license licenses.txt",
@@ -72,7 +72,7 @@
         "@semantic-release/npm": "^13.1.5",
         "@semantic-release/release-notes-generator": "^14.1.0",
         "@types/jest": "^29.5.13",
-        "@types/node": "^20.17.11",
+        "@types/node": "^22.0.0",
         "@typescript-eslint/eslint-plugin": "^8.1.0",
         "@typescript-eslint/parser": "^8.1.0",
         "@vercel/ncc": "^0.38.1",

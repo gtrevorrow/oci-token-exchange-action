@@ -17,12 +17,12 @@ jobs:
       contents: write # Add this line to grant write permissions
     steps:
       # 1. Checks out your repository code
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # 2. Sets up Node.js environment
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: "22.14.0"
+          node-version: "24"
 
       # 3. Installs dependencies (including @vercel/ncc for bundling)
       - run: npm ci

@@ -50,7 +50,7 @@ outputs:
     description: "The path to the generated private key used for the session."
 
 runs:
-  using: "node20"
+  using: "node24"
   main: "dist/action/index.js"
 
 branding:
