@@ -1,4 +1,4 @@
-image: node:20
+image: node:24
 
 definitions:
   steps:
@@ -20,30 +20,23 @@ pipelines:
           - bash install.sh --accept-all-defaults
           - export PATH=$PATH:/root/bin
           
-          # Clone the develop branch and build the token exchange CLI
-          - git clone -b develop https://github.com/gtrevorrow/oci-token-exchange-action.git || git clone https://github.com/gtrevorrow/oci-token-exchange-action.git
-          - cd oci-token-exchange-action
-          - npm ci                    # ✅ Install dependencies fresh
-          - npm run build:cli        # ✅ Build the bundled CLI
-          - chmod +x dist/cli.js
+          # Install the pinned published CLI release used by this pipeline.
+          - npm install --no-save @gtrevorrow/oci-token-exchange@1.2.2
           
           # Run the CLI with proper environment variables
           - |
-            cd dist && \
-            export DEBUG=true && \
-            export PLATFORM=bitbucket && \
-            export OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} && \
-            export DOMAIN_BASE_URL=${DOMAIN_BASE_URL} && \
-            export OCI_TENANCY=${OCI_TENANCY} && \
-            export OCI_REGION=${OCI_REGION} && \
-            export OCI_HOME=${BITBUCKET_CLONE_DIR} && \
-            export OCI_PROFILE=${OCI_PROFILE} && \
-            export RETRY_COUNT=${RETRY_COUNT:-3} && \
-            node cli.js || exit 1
+            PLATFORM=bitbucket \
+            OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \
+            DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \
+            OCI_TENANCY=${OCI_TENANCY} \
+            OCI_REGION=${OCI_REGION} \
+            OCI_HOME=${BITBUCKET_CLONE_DIR} \
+            OCI_PROFILE=${OCI_PROFILE} \
+            RETRY_COUNT=${RETRY_COUNT:-3} \
+            npx --no-install oci-token-exchange
           
           # Return to workspace root and verify OCI CLI works with generated token
-          - cd ../..
-          - oci --auth security_token os ns get
+          - oci --auth security_token --config-file "$BITBUCKET_CLONE_DIR/.oci/config" --profile "${OCI_PROFILE:-DEFAULT}" os ns get
         artifacts:
           - ".oci/**"
           - "private_key.pem"
@@ -53,7 +46,7 @@ pipelines:
   branches:
     main:
       - step:
-          name: Setup OCI CLI from GitHub Repository (Production)
+          name: Setup OCI CLI with Published Package (Production)
           oidc: true
           script:
             # Setup OCI CLI
@@ -61,32 +54,23 @@ pipelines:
             - bash install.sh --accept-all-defaults
             - export PATH=$PATH:/root/bin
             
-            # Clone main branch from GitHub and build CLI
-            - git clone --branch main https://github.com/gtrevorrow/oci-token-exchange-action.git
-            - cd oci-token-exchange-action
-            - npm ci
-            
-            # Build the CLI with explicit commands
-            - npm run build
-            - chmod +x dist/cli.js
+            # Install the pinned published CLI release.
+            - npm install --no-save @gtrevorrow/oci-token-exchange@1.2.2
             
             # Run the CLI
             - |
-              cd dist && \
-              export DEBUG=true && \
-              export PLATFORM=bitbucket && \
-              export OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} && \
-              export DOMAIN_BASE_URL=${DOMAIN_BASE_URL} && \
-              export OCI_TENANCY=${OCI_TENANCY} && \
-              export OCI_REGION=${OCI_REGION} && \
-              export OCI_HOME=${BITBUCKET_CLONE_DIR} && \
-              export OCI_PROFILE=${OCI_PROFILE} && \
-              export RETRY_COUNT=${RETRY_COUNT:-3} && \
-              node cli.js || exit 1
+              PLATFORM=bitbucket \
+              OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \
+              DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \
+              OCI_TENANCY=${OCI_TENANCY} \
+              OCI_REGION=${OCI_REGION} \
+              OCI_HOME=${BITBUCKET_CLONE_DIR} \
+              OCI_PROFILE=${OCI_PROFILE} \
+              RETRY_COUNT=${RETRY_COUNT:-3} \
+              npx --no-install oci-token-exchange
             
             # Return to workspace root and verify OCI CLI works
-            - cd ../..
-            - oci --auth security_token os ns get
+            - oci --auth security_token --config-file "$BITBUCKET_CLONE_DIR/.oci/config" --profile "${OCI_PROFILE:-DEFAULT}" os ns get
           artifacts:
             - ".oci/**"
             - "private_key.pem"

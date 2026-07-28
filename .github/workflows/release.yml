@@ -33,16 +33,16 @@ jobs:
       issues: 'write'
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: main # Explicitly check out the latest main branch
           fetch-depth: 0 # Ensure full history is fetched
           # token: ${{ secrets.SEMANTIC_RELEASE_PAT }} # Optional: use PAT if default GITHUB_TOKEN has issues with workflow_run checkout, but usually not needed for same repo.
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '22.14.0'
+          node-version: '>=24.10.0 <25'
 
       - name: Install Dependencies
         run: npm ci
@@ -182,6 +182,21 @@ jobs:
           fi
           echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
           echo "New version released: $VERSION"
+
+      - name: Update npm major release dist-tag (e.g., major-v1)
+        if: env.RELEASE_VERSION
+        run: |
+          VERSION="${RELEASE_VERSION#v}"
+          MAJOR_VERSION=$(echo "$VERSION" | sed -E 's/([0-9]+)\..*/\1/')
+          NPM_MAJOR_TAG="major-v$MAJOR_VERSION"
+          PACKAGE_NAME=$(node -p 'require("./package.json").name')
+
+          echo "Updating npm dist-tag $NPM_MAJOR_TAG to $PACKAGE_NAME@$VERSION"
+          npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+          npm dist-tag add "$PACKAGE_NAME@$VERSION" "$NPM_MAJOR_TAG"
+        env:
+          RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # Add a step to debug outputs if the problem persists
       - name: Dump semantic-release outputs
