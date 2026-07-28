@@ -142,11 +142,17 @@ The project follows a structured process from development to production, using a
      - Determine the appropriate next version number based on conventional commits.
      - Generate release notes automatically from commit messages.
      - Create a GitHub release and a corresponding version tag (e.g., `v1.1.0`).
-     - Publish the package to npm with the calculated version.
+     - Publish the package to npm with the calculated version using npm trusted publishing.
    - The `release.yml` workflow includes additional diagnostics and structured output handling to make `semantic-release` behavior easier to inspect and troubleshoot.
 
 4. **Test Publishing:**  
-   For test releases, use the `.github/workflows/test-publish.yml` workflow, which can be triggered manually from the Actions tab. Test packages are published to npm with a tag like `1.2.3-YYYYMMDD-beta`.
+   Manually run the `.github/workflows/release.yml` workflow from the Actions tab and provide:
+   - The branch or commit SHA to publish, normally `develop`.
+   - An explicit prerelease version such as `2.0.0-rc.1`.
+
+   The workflow validates, builds, tests, and publishes the package with the npm
+   `beta` dist-tag using trusted publishing. It rejects versions without a
+   prerelease suffix.
 
    To install a package published with a specific tag (e.g., `beta`):
    ```bash
@@ -154,9 +160,18 @@ The project follows a structured process from development to production, using a
    ```
 
 **Notes:**
-- All publishing is handled by CI; do not publish manually.
+- All package publishing is handled by CI through npm trusted publishing; do not publish packages manually.
+- npm trusted publishing does not authorize `npm dist-tag` mutations. After a stable
+  release, a maintainer updates the applicable npm major-family tag with interactive
+  authentication, for example:
+  ```bash
+  npm dist-tag add @gtrevorrow/oci-token-exchange@2.0.0 major-v2
+  ```
 - Only merge to `main` when ready for release.
-- **Initial Workflow Setup:** For manually triggered workflows (`workflow_dispatch`) like `test-publish.yml` to appear in the GitHub Actions UI, the workflow file must first exist in the default branch (`main`). You may need to merge a minimal version of the file into `main` initially. Subsequent development and testing can then occur on branches like `develop` by manually triggering the workflow and selecting the desired branch in the UI.
+- **Initial Workflow Setup:** The manually triggered `release.yml` workflow must
+  contain its `workflow_dispatch` configuration on the default branch (`main`)
+  before prerelease publishing appears in the GitHub Actions UI. A minimal CI-only
+  change may need to be merged to `main` before publishing from `develop`.
 - See the [README](./README.md) for user installation and usage instructions.
 
 

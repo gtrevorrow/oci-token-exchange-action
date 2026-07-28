@@ -64,9 +64,9 @@ npm install -g @gtrevorrow/oci-token-exchange
 npm install -g @gtrevorrow/oci-token-exchange@<release-tag>
 ```
 
-Stable releases are published with `latest` and a major-family npm dist-tag such
-as `major-v1`. The major-family tag advances to the newest stable point release
-for that major version.
+Stable releases are published with the `latest` npm dist-tag. Major-family
+dist-tags such as `major-v1` are maintained manually after a release. For an
+immutable installation, use an exact package version.
 
 ## Usage
 
