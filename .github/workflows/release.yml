@@ -191,8 +191,10 @@ jobs:
       - name: Get released version
         # Check if the new 'Set Semantic Release Outputs' step indicates a release
         if: steps.sr_outputs.outputs.new_release_published == 'true'
+        env:
+          RELEASE_VERSION_OUTPUT: ${{ steps.sr_outputs.outputs.new_release_version }}
         run: |
-          VERSION="${{ steps.sr_outputs.outputs.new_release_version }}"
+          VERSION="$RELEASE_VERSION_OUTPUT"
           # Add 'v' prefix if not already present
           if [[ "$VERSION" != v* ]]; then
             VERSION="v$VERSION"
@@ -203,10 +205,13 @@ jobs:
       # Add a step to debug outputs if the problem persists
       - name: Dump semantic-release outputs
         if: always()
+        env:
+          NEW_RELEASE_PUBLISHED: ${{ steps.sr_outputs.outputs.new_release_published }}
+          NEW_RELEASE_VERSION: ${{ steps.sr_outputs.outputs.new_release_version }}
         run: |
           echo "Semantic Release Outputs (from sr_outputs step):"
-          echo "new_release_published: ${{ steps.sr_outputs.outputs.new_release_published }}"
-          echo "new_release_version: ${{ steps.sr_outputs.outputs.new_release_version }}"
+          echo "new_release_published: $NEW_RELEASE_PUBLISHED"
+          echo "new_release_version: $NEW_RELEASE_VERSION"
           # Notes can contain special characters, so we'll just check if they exist
           echo "new_release_notes: [notes available but not displayed due to special characters]"
 
