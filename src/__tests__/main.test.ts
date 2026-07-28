@@ -9,6 +9,7 @@ import {
 } from "@jest/globals";
 import * as fs from "fs/promises";
 import * as crypto from "crypto";
+import os from "os";
 import { configureOciCli, OciConfig } from "../main";
 import { MockPlatform } from "./test-utils";
 
@@ -19,6 +20,7 @@ jest.mock("fs/promises", () => {
     access: jest.fn<() => Promise<void>>(),
     mkdir: jest.fn<() => Promise<void>>(),
     chmod: jest.fn<() => Promise<void>>(),
+    rename: jest.fn<() => Promise<void>>(),
   };
 
   // Set up return values with proper typing
@@ -27,19 +29,27 @@ jest.mock("fs/promises", () => {
   mockFs.access.mockResolvedValue(undefined);
   mockFs.mkdir.mockResolvedValue(undefined);
   mockFs.chmod.mockResolvedValue(undefined);
+  mockFs.rename.mockResolvedValue(undefined);
 
   return mockFs;
 });
 
-jest.mock("path", () => ({
-  resolve: jest.fn().mockImplementation((...parts) => parts.join("/")),
-  join: jest.fn().mockImplementation((...parts) => parts.join("/")),
-}));
+jest.mock("path", () => {
+  // Normalize path joins in tests so expectations remain OS-agnostic
+  const actualPath = jest.requireActual<typeof import("path")>("path");
+  return {
+    dirname: actualPath.dirname,
+    basename: actualPath.basename,
+    resolve: jest.fn().mockImplementation((...parts) => parts.join("/")),
+    join: jest.fn().mockImplementation((...parts) => parts.join("/")),
+  };
+});
 
 describe("main.ts", () => {
   let mockPlatform: MockPlatform;
   let testConfig: OciConfig;
   let testKeyPair: crypto.KeyPairSyncResult<string, string>;
+  let originalHome: string | undefined;
 
   beforeEach(() => {
     mockPlatform = new MockPlatform();
@@ -55,19 +65,27 @@ describe("main.ts", () => {
     testConfig = {
       privateKey: crypto.createPrivateKey(testKeyPair.privateKey),
       publicKey: crypto.createPublicKey(testKeyPair.publicKey),
-      upstToken: "test-token",
+      sessionToken: "test-token",
       ociFingerprint: "test-fingerprint",
       ociTenancy: "test-tenancy",
       ociRegion: "test-region",
+      ociHome: "/mock/home",
+      ociProfile: "DEFAULT",
     };
 
+    originalHome = process.env.HOME;
     process.env.HOME = "/mock/home";
     jest.clearAllMocks();
   });
 
   afterEach(() => {
+    jest.restoreAllMocks();
     jest.resetModules();
-    delete process.env.HOME;
+    if (typeof originalHome === "string") {
+      process.env.HOME = originalHome;
+    } else {
+      delete process.env.HOME;
+    }
   });
 
   describe("configureOciCli", () => {
@@ -77,20 +95,32 @@ describe("main.ts", () => {
       expect(fs.mkdir).toHaveBeenCalledWith(expect.stringContaining(".oci"), {
         recursive: true,
       });
+      // configureOciCli writes config, key, session, and public key artifacts
       expect(fs.writeFile).toHaveBeenCalledTimes(4);
+      expect(fs.chmod).toHaveBeenCalledWith(
+        expect.stringContaining("config"),
+        "600",
+      );
       expect(fs.chmod).toHaveBeenCalledWith(
         expect.stringContaining("private_key.pem"),
         "600",
       );
+      expect(fs.chmod).toHaveBeenCalledWith(
+        expect.stringContaining("token"),
+        "600",
+      );
+      expect(fs.chmod).toHaveBeenCalledTimes(3);
     });
 
     const errorTestCases: [string, () => void, string][] = [
       [
-        "should throw error if HOME is undefined",
+        "should throw error if OCI home is undefined and homedir cannot be resolved",
         () => {
-          delete process.env.HOME;
+          // Simulate missing resolved OCI home
+          delete testConfig.ociHome;
+          jest.spyOn(os, "homedir").mockReturnValue("");
         },
-        "HOME environment variable is not defined",
+        "OCI home directory is not defined",
       ],
       [
         "should handle directory creation failure",
@@ -122,6 +152,47 @@ describe("main.ts", () => {
       },
     );
 
+    it("should fallback to os.homedir when OCI home input is empty", async () => {
+      testConfig.ociHome = "";
+      jest.spyOn(os, "homedir").mockReturnValue("/os/home");
+
+      await configureOciCli(mockPlatform, testConfig);
+
+      expect(os.homedir).toHaveBeenCalled();
+    });
+
+    it("should reject oci_profile with path separators", async () => {
+      testConfig.ociProfile = "../bad-profile";
+
+      await expect(configureOciCli(mockPlatform, testConfig)).rejects.toThrow(
+        "Invalid oci_profile",
+      );
+    });
+
+    it("should reject oci_profile with INI section characters", async () => {
+      testConfig.ociProfile = "bad[profile]";
+
+      await expect(configureOciCli(mockPlatform, testConfig)).rejects.toThrow(
+        "Invalid oci_profile",
+      );
+    });
+
+    it("should reject oci_profile with control characters", async () => {
+      testConfig.ociProfile = "bad\nprofile";
+
+      await expect(configureOciCli(mockPlatform, testConfig)).rejects.toThrow(
+        "Invalid oci_profile",
+      );
+    });
+
+    it("should allow compatible oci_profile names with spaces and dots", async () => {
+      testConfig.ociProfile = "Team Prod.1";
+
+      await expect(
+        configureOciCli(mockPlatform, testConfig),
+      ).resolves.toBeUndefined();
+    });
+
     it("should write correct OCI config content", async () => {
       await configureOciCli(mockPlatform, testConfig);
 
@@ -129,7 +200,7 @@ describe("main.ts", () => {
         fs.writeFile as jest.MockedFunction<typeof fs.writeFile>
       ).mock.calls;
       const configCall = writeCalls.find((call) =>
-        String(call[0]).endsWith("/config"),
+        String(call[0]).includes("/.config.tmp"),
       );
 
       expect(configCall).toBeDefined();
@@ -140,25 +211,25 @@ describe("main.ts", () => {
       expect(content).toContain("tenancy=test-tenancy");
       expect(content).toContain("region=test-region");
       expect(content).toContain("private_key.pem");
-      expect(content).toContain("session");
+      expect(content).toContain(".oci/sessions/DEFAULT/");
+      expect(content).toContain("token");
     });
 
-    const profileTestCases: [string, string | undefined, string][] = [
-      ["should create custom profile when specified", "CUSTOM", "[CUSTOM]"],
+    const profileTestCases: [string, string | undefined][] = [
       [
-        "should create DEFAULT profile when not specified",
+        "should create custom profile with full content when specified",
+        "CUSTOM",
+      ],
+      [
+        "should create DEFAULT profile with full content when not specified",
         undefined,
-        "[DEFAULT]",
       ],
     ];
 
     test.each(profileTestCases)(
       "%s",
-      async (
-        description: string,
-        profile: string | undefined,
-        expectedHeader: string,
-      ) => {
+      async (description: string, profile: string | undefined) => {
+        const expectedProfileName = profile || "DEFAULT";
         if (profile) {
           testConfig.ociProfile = profile;
         }
@@ -169,11 +240,28 @@ describe("main.ts", () => {
           fs.writeFile as jest.MockedFunction<typeof fs.writeFile>
         ).mock.calls;
         const configCall = writeCalls.find((call) =>
-          String(call[0]).endsWith("/config"),
+          String(call[0]).includes("/.config.tmp"),
         );
         const content = configCall![1] as string;
 
-        expect(content).toContain(expectedHeader);
+        // Split config into profiles based on headers like [PROFILE_NAME]
+        const profiles = content.trim().split(/\n(?=\[)/);
+        const targetProfile = profiles.find((p) =>
+          p.startsWith(`[${expectedProfileName}]`),
+        );
+
+        expect(targetProfile).toBeDefined();
+
+        // Check each key-value pair within the target profile block
+        expect(targetProfile).toContain(`fingerprint=test-fingerprint`);
+        expect(targetProfile).toContain(`tenancy=test-tenancy`);
+        expect(targetProfile).toContain(`region=test-region`);
+        expect(targetProfile).toContain(
+          `key_file=/mock/home/.oci/sessions/${expectedProfileName}/private_key.pem`,
+        );
+        expect(targetProfile).toContain(
+          `security_token_file=/mock/home/.oci/sessions/${expectedProfileName}/token`,
+        );
       },
     );
 
@@ -182,20 +270,22 @@ describe("main.ts", () => {
       await configureOciCli(mockPlatform, testConfig);
 
       expect(fs.mkdir).toHaveBeenCalledWith(
-        expect.stringContaining("/TESTPROF"),
+        expect.stringContaining("/sessions/TESTPROF"),
         { recursive: true },
       );
 
-      const writeCalls = (
-        fs.writeFile as jest.MockedFunction<typeof fs.writeFile>
+      const renameCalls = (
+        fs.rename as jest.MockedFunction<typeof fs.rename>
       ).mock.calls;
       expect(
-        writeCalls.some((call) =>
-          String(call[0]).includes("TESTPROF/private_key.pem"),
+        renameCalls.some((call) =>
+          String(call[1]).endsWith("sessions/TESTPROF/private_key.pem"),
         ),
       ).toBe(true);
       expect(
-        writeCalls.some((call) => String(call[0]).includes("TESTPROF/session")),
+        renameCalls.some((call) =>
+          String(call[1]).endsWith("sessions/TESTPROF/token"),
+        ),
       ).toBe(true);
     });
 
@@ -208,7 +298,7 @@ describe("main.ts", () => {
         fs.writeFile as jest.MockedFunction<typeof fs.writeFile>
       ).mock.calls;
       const configCall = writeCalls.find((call) =>
-        String(call[0]).endsWith("/config"),
+        String(call[0]).includes("/.config.tmp"),
       );
       const content = configCall![1] as string;
 
@@ -227,8 +317,8 @@ user=ocid1.user.oc1..existing
 fingerprint=existing:fingerprint
 tenancy=ocid1.tenancy.oc1..existing
 region=us-phoenix-1
-key_file=/home/user/.oci/DEFAULT/private_key.pem
-session_token_file=/home/user/.oci/DEFAULT/session
+key_file=/home/user/.oci/sessions/DEFAULT/private_key.pem
+session_token_file=/home/user/.oci/sessions/DEFAULT/token
 
 `);
 
@@ -240,7 +330,7 @@ session_token_file=/home/user/.oci/DEFAULT/session
         fs.writeFile as jest.MockedFunction<typeof fs.writeFile>
       ).mock.calls;
       const configCall = writeCalls.find((call) =>
-        String(call[0]).endsWith("/config"),
+        String(call[0]).includes("/.config.tmp"),
       );
       const content = configCall![1] as string;
 
@@ -262,8 +352,8 @@ user=ocid1.user.oc1..olddefault
 fingerprint=old:fingerprint
 tenancy=ocid1.tenancy.oc1..old
 region=us-ashburn-1
-key_file=/home/user/.oci/DEFAULT/old_private_key.pem
-session_token_file=/home/user/.oci/DEFAULT/old_session
+key_file=/home/user/.oci/sessions/DEFAULT/old_private_key.pem
+session_token_file=/home/user/.oci/sessions/DEFAULT/old_token
 
 [OTHER]
 user=ocid1.user.oc1..other
@@ -282,7 +372,7 @@ region=us-phoenix-1
         fs.writeFile as jest.MockedFunction<typeof fs.writeFile>
       ).mock.calls;
       const configCall = writeCalls.find((call) =>
-        String(call[0]).endsWith("/config"),
+        String(call[0]).includes("/.config.tmp"),
       );
       const content = configCall![1] as string;
 

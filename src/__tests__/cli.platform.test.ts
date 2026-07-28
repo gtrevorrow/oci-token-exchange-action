@@ -12,20 +12,24 @@ import { PlatformConfig } from "../platforms/types";
 describe("CLIPlatform", () => {
   let mockConfig: PlatformConfig;
   let platform: CLIPlatform;
+  let originalEnv: NodeJS.ProcessEnv;
 
   beforeEach(() => {
-    // Reset environment before each test
-    process.env = {};
+    if (!originalEnv) {
+      originalEnv = process.env;
+    }
+    // Reset environment while preserving original values for other suites
+    process.env = { ...originalEnv };
 
     mockConfig = {
-      audience: "test-audience",
-      tokenEnvVar: "TEST_TOKEN_VAR",
+      platformType: "local",
     };
 
     platform = new CLIPlatform(mockConfig);
   });
 
   afterEach(() => {
+    process.env = originalEnv;
     jest.resetAllMocks();
   });
 
@@ -47,15 +51,35 @@ describe("CLIPlatform", () => {
   });
 
   describe("getOIDCToken", () => {
-    test("should return token from configured environment variable", async () => {
-      process.env.TEST_TOKEN_VAR = "test-token-value";
-      const token = await platform.getOIDCToken("test-audience");
+    test("should read the local platform token from LOCAL_OIDC_TOKEN", async () => {
+      process.env.LOCAL_OIDC_TOKEN = "test-token-value";
+      const token = await platform.getOIDCToken();
       expect(token).toBe("test-token-value");
     });
 
-    test("should throw error when token environment variable is not set", async () => {
-      await expect(platform.getOIDCToken("test-audience")).rejects.toThrow(
-        "TEST_TOKEN_VAR environment variable not found",
+    test("should read the GitLab platform token from CI_JOB_JWT_V2", async () => {
+      const gitlabPlatform = new CLIPlatform({
+        platformType: "gitlab",
+      });
+      process.env.CI_JOB_JWT_V2 = "gitlab-token";
+
+      await expect(gitlabPlatform.getOIDCToken()).resolves.toBe("gitlab-token");
+    });
+
+    test("should read the Bitbucket platform token from BITBUCKET_STEP_OIDC_TOKEN", async () => {
+      const bitbucketPlatform = new CLIPlatform({
+        platformType: "bitbucket",
+      });
+      process.env.BITBUCKET_STEP_OIDC_TOKEN = "bitbucket-token";
+
+      await expect(bitbucketPlatform.getOIDCToken()).resolves.toBe(
+        "bitbucket-token",
+      );
+    });
+
+    test("should throw when the local platform token environment variable is not set", async () => {
+      await expect(platform.getOIDCToken()).rejects.toThrow(
+        "LOCAL_OIDC_TOKEN environment variable not found",
       );
     });
   });

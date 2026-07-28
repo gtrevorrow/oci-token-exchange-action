@@ -6,17 +6,12 @@
   - [As GitHub Action](#as-github-action)
   - [As CLI Tool](#as-cli-tool)
 - [Usage](#usage)
+  - [Inputs And Outputs](#inputs-and-outputs)
   - [GitHub Actions](#github-actions)
   - [GitLab CI](#gitlab-ci)
-    - [Option 1: Building from Source](#option-1-building-from-source)
-    - [Option 2: Using npm Package](#option-2-using-npm-package)
   - [Bitbucket Pipelines](#bitbucket-pipelines)
-    - [Option 1: Building from Source](#option-1-building-from-source-1)
-    - [Option 2: Using npm Package](#option-2-using-npm-package-1)
   - [Standalone CLI Usage](#standalone-cli-usage)
   - [Debugging](#debugging)
-- [Environment Variables / Github Secrets](#environment-variables--github-secrets)
-  - [Environment Variable Handling](#environment-variable-handling)
 - [How it Works](#how-it-works)
 - [Semantic Versioning](#semantic-versioning)
 - [License](#license)
@@ -33,12 +28,18 @@ A tool to exchange OIDC tokens for [OCI session tokens](https://docs.oracle.com/
 
 ### As GitHub Action
 
-To use this tool as a step in your GitHub Actions workflow, reference it using a specific Git tag or branch. The following options are available, managed automatically by the release workflow:
+To use this tool as a step in your GitHub Actions workflow, reference it using a specific Git tag, commit SHA, or branch. The following options are available, managed automatically by the release workflow:
 
 *   **`@vX` (e.g., `@v1`) - Recommended:** Points to the latest stable release within a specific major version (e.g., the latest `v1.x.y`). This tag is automatically updated upon new releases, allowing you to receive compatible updates and bug fixes without breaking changes.
 *   **`@vX.Y.Z` (e.g., `@v1.1.0`) - Specific Version:** Pins the action to an exact release version created by semantic-release. Use this if you need absolute stability and want to control updates manually.
+*   **`@<full-commit-sha>` - Highest Integrity Pinning:** Pins to a single immutable commit. Use this for high-assurance production pipelines and strict supply-chain controls.
 *   **`@latest` - Latest Release:** Points to the most recent release. This tag is automatically updated upon new releases by the release workflow.
 *   **`@main` - Bleeding Edge (Not Recommended):** Runs the action directly from the latest commit on the `main` branch. This is unstable and should generally be avoided in production workflows.
+
+Pinning guidance:
+*   Use `@<full-commit-sha>` for regulated or high-risk production environments where no automatic movement is acceptable.
+*   Use `@vX.Y.Z` when you want stable behavior with controlled, manual upgrades.
+*   Use `@vX` when you want automatic non-breaking updates within a major version.
 
 ```yaml
 # Recommended: Use the major version tag for automatic compatible updates
@@ -46,6 +47,9 @@ To use this tool as a step in your GitHub Actions workflow, reference it using a
 
 # Alternative: Pin to a specific version (e.g., v1.1.0)
 # - uses: gtrevorrow/oci-token-exchange-action@v1.1.0 
+
+# Highest integrity: Pin to an exact commit SHA
+# - uses: gtrevorrow/oci-token-exchange-action@<full-commit-sha>
 
 # Alternative: Use the latest release
 # - uses: gtrevorrow/oci-token-exchange-action@latest
@@ -55,16 +59,93 @@ To use this tool as a step in your GitHub Actions workflow, reference it using a
 ```bash
 npm install -g @gtrevorrow/oci-token-exchange
 
-# Install a specific version globally (e.g., 1.2.3)
-npm install -g @gtrevorrow/oci-token-exchange@1.2.3
-
-# Install a version with a specific tag (e.g., beta)
-npm install -g @gtrevorrow/oci-token-exchange@beta
+# Install the published release tag you want to use.
+# Replace <release-tag> with your chosen release tag or version.
+npm install -g @gtrevorrow/oci-token-exchange@<release-tag>
 ```
+
+Stable releases are published with the `latest` npm dist-tag. Major-family
+dist-tags such as `major-v1` are maintained manually after a release. For an
+immutable installation, use an exact package version.
 
 ## Usage
 
+### Inputs and Outputs
+
+Use this section as the source of truth for:
+- GitHub Action `with:` inputs
+- Their mapped `INPUT_*` names and CLI environment variable names
+- Platform-specific token variables for GitLab, Bitbucket, and local CLI usage
+- Debug-related environment variables
+- Action outputs
+
+### Inputs
+
+| Action Input | CLI / Env Var | GitHub `INPUT_*` Var | Required | Default | Notes |
+|-------------|---------------|----------------------|----------|---------|-------|
+| `ci_platform` | `PLATFORM` | `INPUT_CI_PLATFORM` | No | `github` | Supported values: `github`, `gitlab`, `bitbucket`, `local`. For GitHub Actions, `ci_platform` is the canonical input. For non-GitHub usage, `PLATFORM` remains the backward-compatible alias. |
+| `oidc_client_identifier` | `OIDC_CLIENT_IDENTIFIER` | `INPUT_OIDC_CLIENT_IDENTIFIER` | Yes | - | OCI IAM confidential client in `client_id:client_secret` form. |
+| `domain_base_url` | `DOMAIN_BASE_URL` | `INPUT_DOMAIN_BASE_URL` | Yes | - | OCI Identity Domain base URL, for example `https://idcs-xxxxxxxxxxxx.identity.oraclecloud.com`. |
+| `oci_tenancy` | `OCI_TENANCY` | `INPUT_OCI_TENANCY` | Yes | - | OCI tenancy OCID. |
+| `oci_region` | `OCI_REGION` | `INPUT_OCI_REGION` | Yes | - | OCI region identifier, for example `us-ashburn-1`. |
+| `oidc_audience` | `OIDC_AUDIENCE` | `INPUT_OIDC_AUDIENCE` | No | `https://cloud.oracle.com` | Audience requested when GitHub Actions mints the OIDC token. This is only used for the GitHub platform. |
+| `oci_home` | `OCI_HOME` | `INPUT_OCI_HOME` | No | `OCI_HOME`, then `HOME`, then OS home directory | Base home folder under which the tool creates the `.oci` directory. Do not pass the `.oci` directory itself. |
+| `oci_profile` | `OCI_PROFILE` | `INPUT_OCI_PROFILE` | No | `DEFAULT` | OCI CLI profile name to create or update. |
+| `retry_count` | `RETRY_COUNT` | `INPUT_RETRY_COUNT` | No | `0` | Number of retry attempts for token exchange failures. |
+| `res_type` | `RES_TYPE` | `INPUT_RES_TYPE` | No | - | Resource type for RPST token exchange, for example `ref_github`. If `res_type` is configured, the tool requests an RPST; otherwise it requests a UPST. |
+| `rpst_exp` | `RPST_EXP` | `INPUT_RPST_EXP` | No | - | Optional RPST expiration in integer minutes. |
+
+If `rpst_exp` is configured, `res_type` must also be configured. If `res_type` is not configured, UPST remains the default.
+
+### Platform Token Variables
+
+| Platform | Variable | Required When | Notes |
+|----------|----------|---------------|-------|
+| GitHub Actions | GitHub runtime OIDC token | `ci_platform=github` | No manual token env var is required; the action requests the token from the GitHub runtime. |
+| GitLab CI | `CI_JOB_JWT_V2` | `PLATFORM=gitlab` | In the examples below, map your `id_tokens` value into `CI_JOB_JWT_V2` before invoking the CLI. |
+| Bitbucket Pipelines | `BITBUCKET_STEP_OIDC_TOKEN` | `PLATFORM=bitbucket` | Provided by Bitbucket when `oidc: true` is enabled for the step. |
+| Local / standalone CLI | `LOCAL_OIDC_TOKEN` | `PLATFORM=local` | Provide your own OIDC token for local testing or custom runners. |
+
+### Outputs
+
+| Output | Description |
+|--------|-------------|
+| `configured` | Set to `true` when configuration completes successfully. |
+| `oci_config_path` | Absolute path to the generated OCI config file. |
+| `oci_session_token_path` | Absolute path to the generated OCI session token file. |
+| `oci_private_key_path` | Absolute path to the generated private key file. |
+
+### Debug Variables
+
+| Context | Variable | Notes |
+|---------|----------|-------|
+| GitHub Actions | `ACTIONS_STEP_DEBUG` | Enables the built-in debug channel used by the action runtime. |
+| GitHub Actions | `ACTIONS_RUNNER_DEBUG` | Optional runner-level tracing. |
+| CLI / other runners | `DEBUG` | Set to `true` to enable verbose CLI logging. |
+
+### Variable Resolution
+
+Variable resolution differs between GitHub Actions and CLI/non-GitHub usage:
+
+1. GitHub Actions path:
+   `GitHubPlatform` uses `@actions/core.getInput(...)`, which reads the GitHub Actions input values exposed through `INPUT_*`.
+   For example, `with: oci_region: ...` is read as `INPUT_OCI_REGION`.
+
+2. CLI / non-GitHub path:
+   `CLIPlatform` uses `resolveInput(...)`, which checks values in this order:
+   - plain environment variable such as `PLATFORM`, `OCI_HOME`, or `RETRY_COUNT`
+   - GitHub-style environment variable such as `INPUT_CI_PLATFORM`
+   - `OCI_*` prefixed environment variable
+   - `OIDC_*` prefixed environment variable
+
+3. Input-specific fallbacks:
+   Some values have additional runtime fallbacks after input resolution.
+   For example, `oci_home` falls back to `HOME` and then the OS home directory.
+
 ### GitHub Actions
+
+Use the example below together with the [Inputs and Outputs](#inputs-and-outputs) reference above.
+
 ```yaml
 - uses: gtrevorrow/oci-token-exchange-action@v1
   with:
@@ -73,206 +154,136 @@ npm install -g @gtrevorrow/oci-token-exchange@beta
     domain_base_url: ${{ vars.DOMAIN_BASE_URL }} 
     oci_tenancy: ${{ secrets.OCI_TENANCY }}
     oci_region: ${{ secrets.OCI_REGION }}
-    # Optional: Custom base folder for OCI config (.oci) directory
+    # Optional: Audience requested when GitHub mints the OIDC token
+    # oidc_audience: 'https://cloud.oracle.com'
+    # Optional: Custom base home folder under which the action creates .oci
     # oci_home: ${{ secrets.OCI_HOME }}
     # Optional: Name of the OCI CLI profile to create. Defaults to 'DEFAULT'.
     # oci_profile: 'DEFAULT' 
     # Optional: Number of retry attempts. Defaults to '0'.
     # retry_count: '0'
+    
 ```
 
 ### GitLab CI
 
-#### Option 1: Building from Source
-
-This example clones the repository, builds the CLI, and then runs it.
+This example follows the working setup in [.gitlab-ci.yml](.gitlab-ci.yml).
+Replace `<release-tag>` with the published release tag or version you want to
+use. The package is installed without modifying the consumer project's manifest,
+the GitLab ID token is mapped to `CI_JOB_JWT_V2`, and the installed binary runs with `npx --no-install`.
 
 ```yaml
-# Use these YAML anchors to setup common tasks
-.oci_setup: &oci_setup |
-  curl -LO https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh
-  bash install.sh --accept-all-defaults
-  source ~/.bashrc
+image: node:24
 
-.clone_build_cli: &clone_build_cli |
-  git clone https://github.com/gtrevorrow/oci-token-exchange-action.git
-  cd oci-token-exchange-action
-  npm ci
-  npm run build:cli
+variables:
+  HUSKY: "0"
+
+.oci_setup: &oci_setup |
+  # Docker runners should only need Python 3 + venv support in the job image.
+  # Shell runners must provide python3 and python3 -m venv on the host.
+  python3 -m venv .oci-cli
+  . .oci-cli/bin/activate
+  python -m pip install --upgrade pip
+  pip install oci-cli
 
 deploy:
   script:
-    # Install OCI CLI
     - *oci_setup
-    
-    # Clone and build the token exchange CLI
-    - *clone_build_cli
-    
-    # Export token from GitLab CI
-    - export CI_JOB_JWT_V2="$(cat $CI_JOB_JWT_FILE)"
-    
-    # Run the built CLI
-    - |
-      cd dist &&
-      PLATFORM=gitlab \
-      OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \
-      DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \ # Changed from DOMAIN_URL
-      OCI_TENANCY=${OCI_TENANCY} \
-      OCI_REGION=${OCI_REGION} \
-      RETRY_COUNT=3 \
-      node cli.js
-    
-    # Verify OCI CLI configuration works
-    - cd ../..
-    - oci os ns get
-  
-  # Run only on main branch
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-  
-  # Configure OIDC token for GitLab
-  id_tokens:
-    ID_TOKEN:
-      aud: https://cloud.oracle.com/gitlab
-```
 
-#### Option 2: Using npm Package
+    - npm install --no-save @gtrevorrow/oci-token-exchange@<release-tag>
 
-This example installs the CLI tool directly from npm.
+    - export CI_JOB_JWT_V2="$ID_TOKEN"
 
-```yaml
-# Use these YAML anchors to setup common tasks
-.oci_setup: &oci_setup |
-  curl -LO https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh
-  bash install.sh --accept-all-defaults
-  source ~/.bashrc
-
-deploy_npm:
-  script:
-    # Install OCI CLI
-    - *oci_setup
-    
-    # Install the token exchange CLI from npm
-    - npm install -g @gtrevorrow/oci-token-exchange
-    
-    # Export token from GitLab CI
-    - export CI_JOB_JWT_V2="$(cat $CI_JOB_JWT_FILE)"
-    
-    # Run the installed CLI
     - |
       PLATFORM=gitlab \
       OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \
-      DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \ # Changed from DOMAIN_URL
+      DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \
       OCI_TENANCY=${OCI_TENANCY} \
       OCI_REGION=${OCI_REGION} \
-      RETRY_COUNT=3 \
-      oci-token-exchange
-    
-    # Verify OCI CLI configuration works
-    - oci os ns get
-  
-  # Run only on main branch
+      OCI_HOME=${CI_PROJECT_DIR} \
+      OCI_PROFILE=${OCI_PROFILE} \
+      RETRY_COUNT=${RETRY_COUNT:-3} \
+      npx --no-install oci-token-exchange
+
+    - oci --auth security_token --config-file "$CI_PROJECT_DIR/.oci/config" --profile "${OCI_PROFILE:-DEFAULT}" os ns get
+
   rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-  
-  # Configure OIDC token for GitLab
+    - if: $CI_COMMIT_BRANCH == "develop"
+
   id_tokens:
     ID_TOKEN:
-      aud: https://cloud.oracle.com/gitlab
+      aud: https://cloud.oracle.com/
 ```
 
 ### Bitbucket Pipelines
 
-#### Option 1: Building from Source
-
-This example clones the repository, builds the CLI, and then runs it.
+This example follows the working setup in [bitbucket-pipelines.yml](bitbucket-pipelines.yml).
+Replace `<release-tag>` with the published release tag or version you want to
+use. Both pipelines invoke the locally installed package with `npx --no-install`
+and explicitly verify the generated OCI configuration.
 
 ```yaml
-image: node:20
+image: node:24
 
 pipelines:
   default:
     - step:
-        name: Setup OCI CLI with OIDC Token Exchange (Build from Source)
-        oidc: true  # Enable OIDC for Bitbucket
+        name: Setup OCI CLI with OIDC Token Exchange
+        oidc: true
         script:
-          # Setup OCI CLI
           - curl -LO https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh
           - bash install.sh --accept-all-defaults
           - export PATH=$PATH:/root/bin
-          
-          # Clone and build the token exchange CLI from GitHub
-          - git clone https://github.com/gtrevorrow/oci-token-exchange-action.git
-          - cd oci-token-exchange-action
-          - npm ci
-          - npm run build:cli
-          
-          # Run the built CLI for token exchange
-          - >
-            cd dist &&
-            export PLATFORM=bitbucket &&
-            export OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} &&
-            export DOMAIN_BASE_URL=${DOMAIN_BASE_URL} && # Changed from DOMAIN_URL
-            export OCI_TENANCY=${OCI_TENANCY} &&
-            export OCI_REGION=${OCI_REGION} &&
-            export RETRY_COUNT=3
-          - node cli.js || exit 1
-          
-          # Verify OCI CLI works with generated token
-          - cd ../..
-          - oci os ns get
-        
-        # Preserve credentials for subsequent steps
+          - npm install --no-save @gtrevorrow/oci-token-exchange@<release-tag>
+          - |
+            PLATFORM=bitbucket \
+            OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \
+            DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \
+            OCI_TENANCY=${OCI_TENANCY} \
+            OCI_REGION=${OCI_REGION} \
+            OCI_HOME=${BITBUCKET_CLONE_DIR} \
+            OCI_PROFILE=${OCI_PROFILE} \
+            RETRY_COUNT=${RETRY_COUNT:-3} \
+            npx --no-install oci-token-exchange
+          - oci --auth security_token --config-file "$BITBUCKET_CLONE_DIR/.oci/config" --profile "${OCI_PROFILE:-DEFAULT}" os ns get
         artifacts:
           - ".oci/**"
           - "private_key.pem"
           - "public_key.pem"
           - "session"
-```
 
-#### Option 2: Using npm Package
-
-This example installs the CLI tool directly from npm.
-
-```yaml
-image: node:20
-
-pipelines:
-  default:
-    - step:
-        name: Setup OCI CLI with OIDC Token Exchange (npm Package)
-        oidc: true  # Enable OIDC for Bitbucket
-        script:
-          # Setup OCI CLI
-          - curl -LO https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh
-          - bash install.sh --accept-all-defaults
-          - export PATH=$PATH:/root/bin
-          
-          # Install the token exchange CLI from npm
-          - npm install -g @gtrevorrow/oci-token-exchange
-          
-          # Run the installed CLI for token exchange
-          - >
-            export PLATFORM=bitbucket &&
-            export OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} &&
-            export DOMAIN_BASE_URL=${DOMAIN_BASE_URL} && # Changed from DOMAIN_URL
-            export OCI_TENANCY=${OCI_TENANCY} &&
-            export OCI_REGION=${OCI_REGION} &&
-            export RETRY_COUNT=3
-          - oci-token-exchange || exit 1
-          
-          # Verify OCI CLI works with generated token
-          - oci os ns get
-        
-        # Preserve credentials for subsequent steps
-        artifacts:
-          - ".oci/**"
-          - "private_key.pem"
-          - "public_key.pem"
-          - "session"
+  branches:
+    main:
+      - step:
+          name: Setup OCI CLI with Published Package (Production)
+          oidc: true
+          script:
+            - curl -LO https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh
+            - bash install.sh --accept-all-defaults
+            - export PATH=$PATH:/root/bin
+            - npm install --no-save @gtrevorrow/oci-token-exchange@<release-tag>
+            - |
+              PLATFORM=bitbucket \
+              OIDC_CLIENT_IDENTIFIER=${OIDC_CLIENT_IDENTIFIER} \
+              DOMAIN_BASE_URL=${DOMAIN_BASE_URL} \
+              OCI_TENANCY=${OCI_TENANCY} \
+              OCI_REGION=${OCI_REGION} \
+              OCI_HOME=${BITBUCKET_CLONE_DIR} \
+              OCI_PROFILE=${OCI_PROFILE} \
+              RETRY_COUNT=${RETRY_COUNT:-3} \
+              npx --no-install oci-token-exchange
+            - oci --auth security_token --config-file "$BITBUCKET_CLONE_DIR/.oci/config" --profile "${OCI_PROFILE:-DEFAULT}" os ns get
+          artifacts:
+            - ".oci/**"
+            - "private_key.pem"
+            - "public_key.pem"
+            - "session"
 ```
 
 ### Standalone CLI Usage
+
+See [Inputs and Outputs](#inputs-and-outputs) for the complete CLI environment variable reference.
+
 ```bash
 # Install globally
 npm install -g @gtrevorrow/oci-token-exchange
@@ -281,9 +292,11 @@ npm install -g @gtrevorrow/oci-token-exchange
 export LOCAL_OIDC_TOKEN="your.jwt.token"
 # Optional: set custom OCI config home
 export OCI_HOME="/custom/home"
+# Optional: set custom OCI CLI profile name (defaults to 'DEFAULT')
+export OCI_PROFILE="myprofile"
 PLATFORM=local \
 OIDC_CLIENT_IDENTIFIER=your-client-identifier \
-DOMAIN_BASE_URL=https://your-domain.identity.oraclecloud.com \ # Changed from DOMAIN_URL
+DOMAIN_BASE_URL=https://your-domain.identity.oraclecloud.com \
 OCI_TENANCY=your-tenancy-ocid \
 OCI_REGION=your-region \
 oci-token-exchange
@@ -294,47 +307,26 @@ oci os ns get
 
 ### Debugging
 
-To enable detailed logging, set the `DEBUG` environment variable to `true`:
+**GitHub Actions**
+
+- Add a repository or environment secret named `ACTIONS_STEP_DEBUG` with the value `true`, then reference it in the workflow (`env: ACTIONS_STEP_DEBUG: ${{ secrets.ACTIONS_STEP_DEBUG }}`). This enables the built-in debug channel that the action checks via `core.isDebug()`.
+- Optional: set `ACTIONS_RUNNER_DEBUG` to `true` (also via secret) when you need runner-level tracing.
+
+**CLI / other runners**
+
+Set the `DEBUG` environment variable to `true` before invoking the tool:
 
 ```bash
 export DEBUG=true
 ```
 
-This will log additional information, such as token exchange requests and responses, to help with troubleshooting.
-
-## Environment Variables / Github Secrets 
-
-The action supports flexible environment variable naming to make it easier to use across different platforms:
-
-| Variable | Alternate Names | Description | Required |
-|----------|----------------|-------------|----------|
-| `OIDC_CLIENT_IDENTIFIER` | `INPUT_OIDC_CLIENT_IDENTIFIER` | The `client_id:client_secret` string for your confidential OAuth client application. This string is the content used for HTTP Basic Authentication (prior to Base64 encoding), as typically used with the OAuth 2.0 client credentials grant type. The action/tool handles the Base64 encoding. This client application must be registered in the OCI IAM domain and listed in the `oauthClients` attribute of your Identity Propagation Trust policy. This identifies the application making the token exchange request. The client credential derived from this identifier is used to validate the client performing the token exchange. It's important to understand that this is not analogous to a static, long-lived API key; you cannot authenticate and authorize calls to OCI APIs using these client credentials directly. Instead, it serves as an additional layer of protection (in addition to the impersonation rules defined in the trust policy) to ensure that only authorized clients can perform a token exchange. This is especially relevant in contexts like GitHub Actions, where all repositories share a single OCI OIDC provider that signs the tokens it issues with the same private key (i.e., the signing key is not unique per repository or workflow). GitHub Action input: `oidc_client_identifier`. CLI env var: `OIDC_CLIENT_IDENTIFIER`. | Yes |
-| `DOMAIN_BASE_URL` | `INPUT_DOMAIN_BASE_URL` | Base URL of OCI Identity Domain. GitHub Action input: `domain_base_url`. CLI env var: `DOMAIN_BASE_URL`. | Yes |
-| `OCI_TENANCY` | `INPUT_OCI_TENANCY` | OCI tenancy OCID. GitHub Action input: `oci_tenancy`. CLI env var: `OCI_TENANCY`. | Yes |
-| `OCI_REGION` | `INPUT_OCI_REGION` | OCI region identifier. GitHub Action input: `oci_region`. CLI env var: `OCI_REGION`. | Yes |
-| `PLATFORM` | `INPUT_CI_PLATFORM` | CI platform. GitHub Action input: `ci_platform` (default: `github`). CLI env var: `PLATFORM` (`github`, `gitlab`, `bitbucket`, or `local`). | No (default: `github`) |
-| `RETRY_COUNT` | `INPUT_RETRY_COUNT` | Number of retry attempts. GitHub Action input: `retry_count`. CLI env var: `RETRY_COUNT`. | No (default: `0`) |
-| `LOCAL_OIDC_TOKEN` | - | OIDC token when using `PLATFORM=local` (CLI only). | Yes, when platform=local |
-| `CI_JOB_JWT_V2` | - | GitLab CI JWT token (used when `PLATFORM=gitlab` for CLI). | Yes, when platform=gitlab |
-| `BITBUCKET_STEP_OIDC_TOKEN` | - | Bitbucket OIDC token (used when `PLATFORM=bitbucket` for CLI). | Yes, when platform=bitbucket |
-| `DEBUG` | - | Enable debug output (CLI env var). | No (default: `false`) |
-| `OCI_HOME` | `INPUT_OCI_HOME` | Base folder for OCI config (.oci) directory. GitHub Action input: `oci_home`. CLI env var: `OCI_HOME`. | No |
-| `OCI_PROFILE` | `INPUT_OCI_PROFILE` | Name of the OCI CLI profile to create. GitHub Action input: `oci_profile`. CLI env var: `OCI_PROFILE`. Defaults to `DEFAULT`. | No |
-
-### Environment Variable Handling
-
-Variables can be provided in two ways:
-
-1. **GitHub Actions Format**: Variables in the format `INPUT_VARIABLE_NAME` (used by GitHub Actions)
-2. **Standard Format**: Plain environment variables matching the exact names listed above
-
-The GitHub Action automatically maps variables from GitHub's format to the standard format, but if you're using the CLI directly, use the variable names exactly as shown above.
+This produces verbose logs (requests/responses, file paths, etc.) to simplify troubleshooting.
 
 ## How it Works
 
 1. Generates an RSA key pair 
 2. Requests a GitHub OIDC JWT token
-3. Exchanges the JWT for an OCI UPST token
+3. Exchanges the JWT for an OCI UPST token, or an RPST token when `res_type` is configured
 4. Configures the OCI CLI with the obtained credentials
 
 ## Semantic Versioning

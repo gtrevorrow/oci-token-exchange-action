@@ -4,6 +4,7 @@
  */
 import * as fs from "fs/promises";
 import * as path from "path";
+import os from "os";
 import crypto from "crypto";
 import axios from "axios";
 import { Platform, PlatformConfig } from "./platforms/types";
@@ -13,36 +14,32 @@ import {
   TokenExchangeConfig,
   OciConfig,
   ConfigInputs,
-  UpstTokenResponse,
+  OciSessionTokenType,
+  TokenExchangeResponse,
   TokenExchangeError,
 } from "./types";
+import { resolveInput } from "./platforms/types";
 
-const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
-  github: { audience: "https://cloud.oracle.com" },
-  gitlab: {
-    tokenEnvVar: "CI_JOB_JWT_V2",
-    audience: "https://cloud.oracle.com",
-  },
-  bitbucket: {
-    tokenEnvVar: "BITBUCKET_STEP_OIDC_TOKEN",
-    audience: "https://cloud.oracle.com",
-  },
-  local: {
-    tokenEnvVar: "LOCAL_OIDC_TOKEN",
-    audience: "https://cloud.oracle.com",
-  },
-};
+const CLI_PLATFORMS = new Set(["gitlab", "bitbucket", "local"]);
+
+function resolvePlatformType(): string {
+  return (
+    resolveInput("ci_platform") ||
+    resolveInput("platform") ||
+    process.env.PLATFORM ||
+    "github"
+  );
+}
 
 // Create platform instance based on environment
 function createPlatform(platformType: string): Platform {
-  const config = PLATFORM_CONFIGS[platformType];
-  if (!config) {
+  if (platformType !== "github" && !CLI_PLATFORMS.has(platformType)) {
     throw new Error(`Unsupported platform: ${platformType}`);
   }
 
   return platformType === "github"
     ? new GitHubPlatform()
-    : new CLIPlatform(config);
+    : new CLIPlatform({ platformType });
 }
 
 // Generate RSA key pair
@@ -80,8 +77,125 @@ function isValidUrl(url: string): boolean {
   }
 }
 
-// Function to exchange JWT for OCI UPST token
-export async function tokenExchangeJwtToUpst(
+type RpstExchangeFields = {
+  res_type: string;
+  rpst_exp?: string;
+};
+
+function resolveRpstExchangeFields({
+  rpstResourceType,
+  rpstExpiration,
+}: Pick<
+  TokenExchangeConfig,
+  "rpstResourceType" | "rpstExpiration"
+>): RpstExchangeFields | undefined {
+  const trimmedResourceType =
+    typeof rpstResourceType === "string" ? rpstResourceType.trim() : "";
+  const trimmedExpiration =
+    typeof rpstExpiration === "string" ? rpstExpiration.trim() : "";
+
+  if (!trimmedResourceType && !trimmedExpiration) {
+    return undefined;
+  }
+
+  if (!trimmedResourceType) {
+    throw new Error(
+      "RPST token exchange requires rpstResourceType (res_type input)",
+    );
+  }
+
+  if (
+    trimmedExpiration &&
+    (!/^\d+$/.test(trimmedExpiration) || Number(trimmedExpiration) <= 0)
+  ) {
+    throw new Error("rpst_exp must be a positive integer number of minutes");
+  }
+
+  return {
+    res_type: trimmedResourceType,
+    ...(trimmedExpiration ? { rpst_exp: trimmedExpiration } : {}),
+  };
+}
+
+function getRequestedTokenTypeUrn(
+  requestedTokenType: OciSessionTokenType,
+): string {
+  return `urn:oci:token-type:oci-${requestedTokenType}`;
+}
+
+type TokenSummary =
+  | {
+    kind: "jwt";
+    length: number;
+    header?: Record<string, unknown>;
+    payload?: Record<string, unknown>;
+    signature_present: boolean;
+  }
+  | {
+    kind: "opaque";
+    length: number;
+  };
+
+function summarizeJwtPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const safePayload: Record<string, unknown> = {
+    iss: payload.iss,
+    aud: payload.aud,
+    exp: payload.exp,
+    iat: payload.iat,
+  };
+
+  if (typeof payload.sub === "string") {
+    safePayload.sub = `${payload.sub.substring(0, 10)}...`;
+  }
+
+  if (typeof payload.exp === "number") {
+    safePayload.expires_at = new Date(payload.exp * 1000).toISOString();
+  }
+
+  if (typeof payload.iat === "number") {
+    safePayload.issued_at = new Date(payload.iat * 1000).toISOString();
+  }
+
+  return safePayload;
+}
+
+function summarizeToken(token: string): TokenSummary {
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    return { kind: "opaque", length: token.length };
+  }
+
+  const headerStr = Buffer.from(parts[0], "base64").toString("utf8");
+  const payloadStr = Buffer.from(parts[1], "base64").toString("utf8");
+  let header: Record<string, unknown> | undefined;
+  let payload: Record<string, unknown> | undefined;
+
+  try {
+    header = JSON.parse(headerStr);
+  } catch {
+    header = undefined;
+  }
+
+  try {
+    const parsedPayload = JSON.parse(payloadStr);
+    if (parsedPayload && typeof parsedPayload === "object") {
+      payload = summarizeJwtPayload(parsedPayload as Record<string, unknown>);
+    }
+  } catch {
+    payload = undefined;
+  }
+
+  return {
+    kind: "jwt",
+    length: token.length,
+    header,
+    payload,
+    signature_present: parts[2].length > 0,
+  };
+}
+
+// Function to exchange JWT for an OCI session token.
+export async function tokenExchange(
   platform: Platform,
   {
     tokenExchangeURL,
@@ -89,9 +203,18 @@ export async function tokenExchangeJwtToUpst(
     ociPublicKey,
     subjectToken,
     retryCount,
+    rpstResourceType,
+    rpstExpiration,
     currentAttempt = 0,
   }: TokenExchangeConfig,
-): Promise<UpstTokenResponse> {
+): Promise<TokenExchangeResponse> {
+  const rpstExchangeFields = resolveRpstExchangeFields({
+    rpstResourceType,
+    rpstExpiration,
+  });
+  const requestedTokenType: OciSessionTokenType = rpstExchangeFields
+    ? "rpst"
+    : "upst";
   const headers = {
     "Content-Type": "application/x-www-form-urlencoded",
     Authorization: `Basic ${clientCred}`,
@@ -99,39 +222,57 @@ export async function tokenExchangeJwtToUpst(
 
   const data = {
     grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
-    requested_token_type: "urn:oci:token-type:oci-upst",
+    requested_token_type: getRequestedTokenTypeUrn(requestedTokenType),
     public_key: ociPublicKey,
     subject_token: subjectToken,
     subject_token_type: "jwt",
+    ...rpstExchangeFields,
   };
-  // Note that this will log potentially sensitive information but will leave it up to the user to decide if they want to enable debug logging with this risk
-  platform.logger.debug("Token Exchange Request Data: " + JSON.stringify(data));
+  // Debug log redacts token contents while still providing helpful metadata.
+  const redactedRequest = {
+    ...data,
+    subject_token: summarizeToken(subjectToken),
+  };
+  platform.logger.debug(
+    "Token Exchange Request Data (redacted): " +
+    JSON.stringify(redactedRequest),
+  );
 
   try {
     const response = await axios.post(tokenExchangeURL, data, { headers });
+    const responseToken =
+      response.data && typeof response.data.token === "string"
+        ? summarizeToken(response.data.token)
+        : undefined;
     platform.logger.debug(
-      "Token Exchange Response: " + JSON.stringify(response.data),
+      "Token Exchange Response (redacted): " +
+      JSON.stringify({
+        ...response.data,
+        token: responseToken,
+      }),
     );
     return response.data; // auto wrapped in a Promise
   } catch (error) {
     const attemptCounter = currentAttempt ? currentAttempt : 0;
-    if (retryCount > 0 && retryCount >= attemptCounter) {
+    if (retryCount > 0 && attemptCounter < retryCount) {
       platform.logger.warning(
-        `Token exchange failed, retrying ... (${retryCount - attemptCounter - 1} retries left)`,
+        `Token exchange failed, retrying ... (${retryCount - attemptCounter} retries left)`,
       );
       await delay(attemptCounter + 1);
-      return tokenExchangeJwtToUpst(platform, {
+      return tokenExchange(platform, {
         // Promise flattening
         tokenExchangeURL,
         clientCred,
         ociPublicKey,
         subjectToken: subjectToken,
         retryCount,
+        rpstResourceType,
+        rpstExpiration,
         currentAttempt: attemptCounter + 1,
       });
     } else {
       platform.logger.error(
-        "Failed to exchange JWT for UPST after multiple attempts",
+        `Failed to exchange JWT for ${requestedTokenType.toUpperCase()} after multiple attempts`,
       );
       if (error instanceof Error) {
         throw new TokenExchangeError(
@@ -148,7 +289,7 @@ export async function tokenExchangeJwtToUpst(
 }
 
 /**
- * Merge existing OCI config content by removing old profile section
+ * Merge existing OCI config content by removing old profile section ( if exists )
  * and appending a new profile block.
  */
 function mergeOciConfig(
@@ -195,14 +336,28 @@ function mergeOciConfig(
 }
 
 /**
- * Write data to a file and optionally set file permissions.
+ * Write data to a file atomically and optionally set file permissions.
+ * Uses a temporary file and atomic rename to prevent partial writes or corruption.
  */
 async function writeAndChmod(
   filePath: string,
   data: string,
   perms?: string,
 ): Promise<void> {
-  await fs.writeFile(filePath, data);
+  const dir = path.dirname(filePath);
+  const base = path.basename(filePath);
+  const tmpPath = path.join(
+    dir,
+    `.${base}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  );
+
+  await fs.writeFile(tmpPath, data);
+
+  // Atomic rename
+  await fs.rename(tmpPath, filePath);
+
+  // fs.writeFile mode only applies when creating a file. Enforce permissions
+  // after rename so existing config/key/token files cannot retain loose modes.
   if (perms) {
     await fs.chmod(filePath, perms);
   }
@@ -213,18 +368,40 @@ export async function configureOciCli(
   config: OciConfig,
 ): Promise<void> {
   try {
-    const home: string = config.ociHome || process.env.HOME || "";
+    // Determine home directory for OCI config
+    const home = config.ociHome || os.homedir();
     if (!home) {
-      throw new TokenExchangeError("HOME environment variable is not defined");
+      throw new TokenExchangeError(
+        "OCI home directory is not defined; set oci_home input or OCI_HOME",
+      );
     }
 
-    // Sanitize file paths to prevent path injection
+    // Normalize file paths for OCI configuration
     const ociConfigDir: string = path.resolve(path.join(home, ".oci"));
     const ociConfigFile: string = path.resolve(
       path.join(ociConfigDir, "config"),
     );
-    // Create a subfolder per profile to store keys and token
-    const profileName = config.ociProfile || "DEFAULT";
+    // Use the OCI CLI session layout for profile-specific key and token material.
+    const profileName = config.ociProfile;
+    if (!profileName) {
+      throw new TokenExchangeError(
+        "OCI profile is not defined; set oci_profile input or OCI_PROFILE",
+      );
+    }
+    // Allow common profile names while blocking unsafe filesystem and INI section characters.
+    if (
+      profileName === "." ||
+      profileName === ".." ||
+      profileName.includes("/") ||
+      profileName.includes("\\") ||
+      profileName.includes("[") ||
+      profileName.includes("]") ||
+      /[\r\n\t\0-\x1f\x7f]/.test(profileName)
+    ) {
+      throw new TokenExchangeError(
+        "Invalid oci_profile. Path separators, INI section characters, and control characters are not allowed.",
+      );
+    }
     // Ensure required OCI parameters are provided
     if (!config.ociTenancy) {
       throw new TokenExchangeError("OCI tenancy is not defined");
@@ -232,9 +409,12 @@ export async function configureOciCli(
     if (!config.ociRegion) {
       throw new TokenExchangeError("OCI region is not defined");
     }
-    // Create a subfolder per profile to store keys and token
+
+    const sessionsDir: string = path.resolve(
+      path.join(ociConfigDir, "sessions"),
+    );
     const profileDir: string = path.resolve(
-      path.join(ociConfigDir, profileName),
+      path.join(sessionsDir, profileName),
     );
     const ociPrivateKeyFile: string = path.resolve(
       path.join(profileDir, "private_key.pem"),
@@ -242,9 +422,7 @@ export async function configureOciCli(
     const ociPublicKeyFile: string = path.resolve(
       path.join(profileDir, "public_key.pem"),
     );
-    const upstTokenFile: string = path.resolve(
-      path.join(profileDir, "session"),
-    );
+    const sessionTokenFile: string = path.resolve(path.join(profileDir, "token"));
 
     platform.logger.debug(`OCI Config Dir: ${ociConfigDir}`);
 
@@ -255,14 +433,14 @@ export async function configureOciCli(
       key_file: ociPrivateKeyFile,
       tenancy: config.ociTenancy,
       region: config.ociRegion,
-      security_token_file: upstTokenFile,
+      security_token_file: sessionTokenFile,
     };
 
     platform.logger.debug(`Preparing OCI config for profile [${profileName}]`);
 
     try {
       await fs.mkdir(ociConfigDir, { recursive: true });
-      // Also ensure directory for this profile exists
+      await fs.mkdir(sessionsDir, { recursive: true });
       await fs.mkdir(profileDir, { recursive: true });
     } catch (error) {
       throw new TokenExchangeError("Failed to create OCI Config folder", error);
@@ -284,7 +462,7 @@ export async function configureOciCli(
     if (!publicKeyPem || typeof publicKeyPem !== "string") {
       throw new Error("Public key export failed or invalid type");
     }
-    if (!config.upstToken || typeof config.upstToken !== "string") {
+    if (!config.sessionToken || typeof config.sessionToken !== "string") {
       throw new Error("Session token is undefined or invalid type");
     }
     if (!profileObject || typeof profileObject !== "object") {
@@ -310,7 +488,7 @@ export async function configureOciCli(
       // Write keys and token
       await writeAndChmod(ociPrivateKeyFile, privateKeyPem, "600");
       await writeAndChmod(ociPublicKeyFile, publicKeyPem);
-      await writeAndChmod(upstTokenFile, config.upstToken, "600");
+      await writeAndChmod(sessionTokenFile, config.sessionToken, "600");
     } catch (err) {
       throw new TokenExchangeError(
         "Failed to write OCI configuration files",
@@ -326,65 +504,21 @@ export async function configureOciCli(
 // Update debugPrintJWTToken to properly handle different token formats
 function debugPrintJWTToken(platform: Platform, token: string) {
   if (platform.isDebug()) {
-    platform.logger.debug(
-      `JWT Token received (length: ${token.length} characters)`,
-    );
-
-    try {
-      const tokenParts = token.split(".");
-      if (tokenParts.length !== 3) {
-        platform.logger.debug(
-          `Warning: JWT token does not have the expected format (header.payload.signature)`,
-        );
-        return;
-      }
-
-      // Only decode and print the header and selected parts of payload, not the full token
-      const headerStr = Buffer.from(tokenParts[0], "base64").toString("utf8");
-      let header;
-      try {
-        header = JSON.parse(headerStr);
-        platform.logger.debug(`JWT Header: ${JSON.stringify(header)}`);
-      } catch (e) {
-        platform.logger.debug(`Failed to parse JWT header: ${headerStr}`);
-      }
-
-      // Parse payload but only log safe information
-      try {
-        const payloadStr = Buffer.from(tokenParts[1], "base64").toString(
-          "utf8",
-        );
-        const payload = JSON.parse(payloadStr);
-        const safePayload = {
-          iss: payload.iss,
-          aud: payload.aud,
-          exp: payload.exp,
-          iat: payload.iat,
-          sub: payload.sub ? `${payload.sub.substring(0, 10)}...` : undefined,
-          // Include timestamp information for troubleshooting token expiry issues
-          expires_at: payload.exp
-            ? new Date(payload.exp * 1000).toISOString()
-            : undefined,
-          issued_at: payload.iat
-            ? new Date(payload.iat * 1000).toISOString()
-            : undefined,
-        };
-
-        platform.logger.debug(
-          `JWT Payload (safe parts): ${JSON.stringify(safePayload)}`,
-        );
-      } catch (e) {
-        platform.logger.debug(
-          `Failed to parse JWT payload: ${e instanceof Error ? e.message : "Unknown error"}`,
-        );
-      }
-
+    const summary = summarizeToken(token);
+    if (summary.kind === "jwt") {
       platform.logger.debug(
-        `JWT Signature present: ${tokenParts[2].length > 0 ? "Yes" : "No"}`,
+        `JWT Token received (length: ${summary.length} characters)`,
       );
-    } catch (error) {
+      platform.logger.debug(`JWT Header: ${JSON.stringify(summary.header)}`);
       platform.logger.debug(
-        `Error parsing JWT token: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `JWT Payload (safe parts): ${JSON.stringify(summary.payload)}`,
+      );
+      platform.logger.debug(
+        `JWT Signature present: ${summary.signature_present ? "Yes" : "No"}`,
+      );
+    } else {
+      platform.logger.debug(
+        `JWT Token received (opaque format, length: ${summary.length} characters)`,
       );
     }
   }
@@ -392,8 +526,8 @@ function debugPrintJWTToken(platform: Platform, token: string) {
 
 // Main function now creates a local platform instance and passes it to subfunctions
 export async function main(): Promise<void> {
-  const platformType = process.env.PLATFORM || "github";
-  if (!PLATFORM_CONFIGS[platformType]) {
+  const platformType = resolvePlatformType();
+  if (platformType !== "github" && !CLI_PLATFORMS.has(platformType)) {
     throw new Error(`Unsupported platform: ${platformType}`);
   }
   const platform: Platform = createPlatform(platformType);
@@ -403,32 +537,50 @@ export async function main(): Promise<void> {
       "domain_base_url",
       "oci_tenancy",
       "oci_region",
+      "oidc_audience",
       "oci_home",
       "oci_profile",
+      "retry_count",
+      "res_type",
+      "rpst_exp",
     ].reduce<Partial<ConfigInputs>>(
-      (acc, input) => ({
-        ...acc,
-        [input]: platform.getInput(
-          input,
-          input !== "oci_home" && input !== "oci_profile",
+      (accumulated, currentInput) => ({
+        ...accumulated,
+        [currentInput]: platform.getInput(
+          currentInput,
+          currentInput !== "oidc_audience" &&
+          currentInput !== "oci_home" &&
+          currentInput !== "oci_profile" &&
+          currentInput !== "retry_count" &&
+          currentInput !== "res_type" &&
+          currentInput !== "rpst_exp",
         ),
       }),
       {},
     ) as ConfigInputs;
 
-    const retryCount = parseInt(platform.getInput("retry_count", false) || "0");
+    platform.configure(config);
+
+    const retryCount = parseInt(config.retry_count || "0");
     if (isNaN(retryCount) || retryCount < 0) {
       throw new Error("retry_count must be a non-negative number");
     }
+    const rpstExchangeFields = resolveRpstExchangeFields({
+      rpstResourceType: config.res_type,
+      rpstExpiration: config.rpst_exp,
+    });
+    const requestedTokenType: OciSessionTokenType = rpstExchangeFields
+      ? "rpst"
+      : "upst";
 
     // Validate the tokenExchangeURL
-    if (!isValidUrl(`${config.domain_base_url}/oauth2/v1/token`)) {
+    const testUrl = `${config.domain_base_url}/oauth2/v1/token`;
+    // Debug throw removed; proceed with normal execution
+    if (!isValidUrl(testUrl)) {
       throw new Error("Invalid domain_base_url provided");
     }
 
-    const idToken = await platform.getOIDCToken(
-      PLATFORM_CONFIGS[platformType].audience,
-    );
+    const idToken = await platform.getOIDCToken();
     platform.logger.debug(`Token obtained from ${platformType}`);
 
     debugPrintJWTToken(platform, idToken);
@@ -440,8 +592,8 @@ export async function main(): Promise<void> {
     const publicKeyB64: string = encodePublicKeyToBase64();
     platform.logger.debug(`Public Key B64: ${publicKeyB64}`);
 
-    //Exchange platform OIDC token for OCI UPST
-    const upstToken: UpstTokenResponse = await tokenExchangeJwtToUpst(
+    // Exchange platform OIDC token for the requested OCI session token.
+    const sessionTokenResponse: TokenExchangeResponse = await tokenExchange(
       platform,
       {
         tokenExchangeURL: `${config.domain_base_url}/oauth2/v1/token`,
@@ -451,12 +603,22 @@ export async function main(): Promise<void> {
         ociPublicKey: publicKeyB64,
         subjectToken: idToken,
         retryCount,
+        rpstResourceType: config.res_type,
+        rpstExpiration: config.rpst_exp,
       },
     );
-    platform.logger.info(`OCI issued a Session Token `);
+    platform.logger.info(
+      `OCI issued a ${requestedTokenType.toUpperCase()} Session Token`,
+    );
 
     // Resolve OCI home and profile, falling back to environment or defaults
-    const resolvedOciHome = config.oci_home || process.env.OCI_HOME;
+    const resolvedOciHome =
+      config.oci_home || process.env.OCI_HOME || process.env.HOME || os.homedir();
+    if (!resolvedOciHome) {
+      throw new Error(
+        "OCI home directory is not defined; set oci_home input or OCI_HOME/HOME",
+      );
+    }
     const resolvedOciProfile =
       config.oci_profile || process.env.OCI_PROFILE || "DEFAULT";
     const ociConfig: OciConfig = {
@@ -464,17 +626,34 @@ export async function main(): Promise<void> {
       ociProfile: resolvedOciProfile,
       privateKey,
       publicKey,
-      upstToken: upstToken.token,
+      sessionToken: sessionTokenResponse.token,
       ociFingerprint,
       ociTenancy: config.oci_tenancy,
       ociRegion: config.oci_region,
     };
 
     await configureOciCli(platform, ociConfig);
+    const ociConfigDir = path.resolve(path.join(resolvedOciHome, ".oci"));
+    const sessionsDir = path.resolve(path.join(ociConfigDir, "sessions"));
+    const profileDir = path.resolve(
+      path.join(sessionsDir, resolvedOciProfile),
+    );
     platform.logger.info(
       `OCI CLI has been configured to use the session token`,
     );
 
+    platform.setOutput(
+      "oci_config_path",
+      path.resolve(path.join(ociConfigDir, "config")),
+    );
+    platform.setOutput(
+      "oci_session_token_path",
+      path.resolve(path.join(profileDir, "token")),
+    );
+    platform.setOutput(
+      "oci_private_key_path",
+      path.resolve(path.join(profileDir, "private_key.pem")),
+    );
     // Add success output
     platform.setOutput("configured", "true");
 

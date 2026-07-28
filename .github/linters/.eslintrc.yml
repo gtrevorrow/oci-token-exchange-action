@@ -1,16 +1,16 @@
 root: true
 env:
   node: true
-  es2021: true
+  es2022: true
   jest: true
 
-parser: '@typescript-eslint/parser'
+parser: "@typescript-eslint/parser"
 parserOptions:
-  ecmaVersion: 2021
+  ecmaVersion: 2022
   sourceType: module
 
 plugins:
-  - '@typescript-eslint'
+  - "@typescript-eslint"
   - prettier
 
 extends:
@@ -20,11 +20,19 @@ extends:
 
 ignorePatterns:
   - dist/
+  - "*.js"
 
 rules:
-  # Example rules, adjust as needed
-  '@typescript-eslint/no-unused-vars': "warn"
-  '@typescript-eslint/explicit-function-return-type': "off"
-  'prettier/prettier': "off"
-  'comma-dangle': [ "error", "never" ]
-  # '@typescript-eslint/no-var-requires': "off"
+  # TypeScript specific rules
+  "@typescript-eslint/no-unused-vars":
+    - "warn"
+    - argsIgnorePattern: "^_"
+  "@typescript-eslint/explicit-function-return-type": "off"
+  "@typescript-eslint/no-explicit-any": "warn" # Changed from error to warning
+  "@typescript-eslint/no-non-null-assertion": "warn"
+
+  # Let Prettier handle formatting
+  "prettier/prettier": "error"
+
+  # Relaxed rules for development
+  "@typescript-eslint/no-var-requires": "off"

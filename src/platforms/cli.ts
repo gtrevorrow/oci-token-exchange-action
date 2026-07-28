@@ -2,7 +2,9 @@
  * Copyright (c) 2021, 2025 Oracle and/or its affiliates.
  * Licensed under the Universal Permissive License v1.0 as shown at https://oss.oracle.com/licenses/upl.
  */
+import type { ConfigInputs } from "../types";
 import {
+  OIDCTokenOptions,
   Platform,
   PlatformLogger,
   PlatformConfig,
@@ -10,6 +12,12 @@ import {
 } from "./types";
 
 export class CLIPlatform implements Platform {
+  private static readonly TOKEN_ENV_VARS: Record<string, string> = {
+    gitlab: "CI_JOB_JWT_V2",
+    bitbucket: "BITBUCKET_STEP_OIDC_TOKEN",
+    local: "LOCAL_OIDC_TOKEN",
+  };
+
   private readonly _logger: PlatformLogger = {
     debug: (message: string) => {
       if (this.isDebug()) console.debug(message);
@@ -20,6 +28,12 @@ export class CLIPlatform implements Platform {
   };
 
   constructor(private config: PlatformConfig) {}
+
+  private get tokenEnvVar(): string | undefined {
+    return this.config.platformType
+      ? CLIPlatform.TOKEN_ENV_VARS[this.config.platformType]
+      : undefined;
+  }
 
   getInput(name: string, required = false): string {
     const value = resolveInput(name);
@@ -42,13 +56,14 @@ export class CLIPlatform implements Platform {
     return process.env.DEBUG === "true";
   }
 
-  async getOIDCToken(_audience: string): Promise<string> {
-    if (this.config.tokenEnvVar) {
-      const token = process.env[this.config.tokenEnvVar];
+  configure(_config: Partial<ConfigInputs>): void {}
+
+  async getOIDCToken(_options?: OIDCTokenOptions): Promise<string> {
+    const tokenEnvVar = this.tokenEnvVar;
+    if (tokenEnvVar) {
+      const token = process.env[tokenEnvVar];
       if (!token) {
-        throw new Error(
-          `${this.config.tokenEnvVar} environment variable not found`,
-        );
+        throw new Error(`${tokenEnvVar} environment variable not found`);
       }
       // Do not log the token here
       return token;

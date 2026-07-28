@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup OCI CLI Profile via Token Exchange
         # This uses the local action in the current repository.
@@ -28,7 +28,7 @@ jobs:
           # oci_home: '/home/runner/.oci_tf' # Optional: specify a custom OCI home
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: latest # Or specify a fixed version
 

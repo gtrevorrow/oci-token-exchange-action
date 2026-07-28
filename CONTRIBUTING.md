@@ -5,10 +5,8 @@
 - [Opening issues](#opening-issues)
 - [Pre-requisites for code or documentation submissions](#pre-requisites-for-code-or-documentation-submissions)
 - [Commit messages](#commit-messages)
-- [Build, Test, Versioning and Release Process](#build-test-and-versioning)
-  - [Build & Test](#build--test)
-  - [Versioning & Release](#versioning--release)
-    - [Release Types](#release-types)
+- [Versioning & Release](#versioning--release)
+  - [Release Types](#release-types)
 - [Development and Release Workflow](#development-and-release-workflow)
 - [Pull request process](#pull-request-process)
 - [Code of conduct](#code-of-conduct)
@@ -94,33 +92,13 @@ husky - commit-msg hook exited with code 1 (error)
 
 If you have any questions, please check the Conventional Commits FAQ, start a discussion or open an issue.
 
-## Build, Test and Versioning
-
-This project uses an automated build and release system powered by TypeScript, Jest, and [semantic-release](https://github.com/semantic-release/semantic-release).
-
-### Build & Test
-
-- **Build:**  
-  Run `npm run build` to compile TypeScript sources to `dist/`.
-- **Lint & Format:**  
-  Run `npm run lint` and `npm run format:check` to check code style.
-  To automatically fix formatting issues, run `npm run format:write`.
-- **Test:**  
-  Run `npm test` to execute all Jest tests.
-
-**Automated Build Process:**  
-The repository includes a `build-and-commit.yml` workflow that automatically builds and commits the `dist/` files whenever changes are pushed to `main`. This ensures that:
-- The bundled action files (`dist/main.js`, `dist/cli.js`) are always up-to-date
-- Contributors only need to modify source files in `src/` 
-- Users referencing `@main` always get working, built code
-
-### Versioning & Release
+## Versioning & Release
 
 This project follows [Semantic Versioning](https://semver.org/) and uses [semantic-release](https://github.com/semantic-release/semantic-release) (configured via `.releaserc.json`) for automated version management and publishing.
 
-#### Release Types
+### Release Types
 
-- **MAJOR:** Breaking changes (`feat!` or `BREAKING CHANGE:` in commit)
+- **MAJOR:** Breaking changes (`feat!`, `fix!`, etc. or `BREAKING CHANGE:` in commit footer)
 - **MINOR:** New features (`feat`)
 - **PATCH:** Bug fixes and improvements (`fix`, `perf`, `refactor`)
 - **No Release:** `docs`, `style`, `test`, `chore`, `build`, `ci` do not trigger a release
@@ -133,16 +111,21 @@ The project follows a structured process from development to production, using a
    - Create a feature branch from `develop`:  
      `git checkout -b feature/my-feature`
    - Make your changes
-   - Run tests locally: `npm test`
+   - **Format:** Run `npm run format:check` to review formatting consistency. To automatically fix formatting issues, run `npm run format:write`.
+   - **Lint:** `npm run lint` is available for additional feedback, but it is not currently treated as a required passing gate for every contribution.
+   - **Required local validation:** `npm test` and `npm run build`
+   - **IMPORTANT: Rebuild the action bundles** (this keeps `dist/` in sync): `npm run build`
    - Commit changes: `git commit -m "feat: add new feature"` following the [Conventional Commits](https://www.conventionalcommits.org/) format
    - Push to your feature branch: `git push origin feature/my-feature`
-   - **Note:** You do not need to run `npm run build` manually - the automated workflow will handle building and committing `dist/` files.
+
+**Note**: The project uses Prettier with VS Code-compatible settings (`.prettierrc.json`) for consistent formatting.
 
 2. **Integration to Develop:**
    - Create a [pull request](#pull-request-process) targeting the `develop` branch.
    - Address review comments and ensure all checks pass.
    - After approval, a repository maintainer will merge your pull request into `develop`.
    - The `build-and-commit.yml` workflow will automatically build and commit updated `dist/` files to the `develop` branch.
+   - The workflow also reports `format:check` results to help reviewers judge whether formatting drift should be fixed before merge.
    - Verify all tests pass on the `develop` branch.
 
 3. **Creating a Release:**
@@ -159,10 +142,17 @@ The project follows a structured process from development to production, using a
      - Determine the appropriate next version number based on conventional commits.
      - Generate release notes automatically from commit messages.
      - Create a GitHub release and a corresponding version tag (e.g., `v1.1.0`).
-     - Publish the package to npm with the calculated version.
+     - Publish the package to npm with the calculated version using npm trusted publishing.
+   - The `release.yml` workflow includes additional diagnostics and structured output handling to make `semantic-release` behavior easier to inspect and troubleshoot.
 
 4. **Test Publishing:**  
-   For test releases, use the `.github/workflows/test-publish.yml` workflow, which can be triggered manually from the Actions tab. Test packages are published to npm with a tag like `1.2.3-YYYYMMDD-beta`.
+   Manually run the `.github/workflows/release.yml` workflow from the Actions tab and provide:
+   - The branch or commit SHA to publish, normally `develop`.
+   - An explicit prerelease version such as `2.0.0-rc.1`.
+
+   The workflow validates, builds, tests, and publishes the package with the npm
+   `beta` dist-tag using trusted publishing. It rejects versions without a
+   prerelease suffix.
 
    To install a package published with a specific tag (e.g., `beta`):
    ```bash
@@ -170,9 +160,18 @@ The project follows a structured process from development to production, using a
    ```
 
 **Notes:**
-- All publishing is handled by CI; do not publish manually.
+- All package publishing is handled by CI through npm trusted publishing; do not publish packages manually.
+- npm trusted publishing does not authorize `npm dist-tag` mutations. After a stable
+  release, a maintainer updates the applicable npm major-family tag with interactive
+  authentication, for example:
+  ```bash
+  npm dist-tag add @gtrevorrow/oci-token-exchange@2.0.0 major-v2
+  ```
 - Only merge to `main` when ready for release.
-- **Initial Workflow Setup:** For manually triggered workflows (`workflow_dispatch`) like `test-publish.yml` to appear in the GitHub Actions UI, the workflow file must first exist in the default branch (`main`). You may need to merge a minimal version of the file into `main` initially. Subsequent development and testing can then occur on branches like `develop` by manually triggering the workflow and selecting the desired branch in the UI.
+- **Initial Workflow Setup:** The manually triggered `release.yml` workflow must
+  contain its `workflow_dispatch` configuration on the default branch (`main`)
+  before prerelease publishing appears in the GitHub Actions UI. A minimal CI-only
+  change may need to be merged to `main` before publishing from `develop`.
 - See the [README](./README.md) for user installation and usage instructions.
 
 
