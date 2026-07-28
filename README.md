@@ -5,6 +5,7 @@
 - [Installation](#installation)
   - [As GitHub Action](#as-github-action)
   - [As CLI Tool](#as-cli-tool)
+- [Migrating from v1 to v2](#migrating-from-v1-to-v2)
 - [Usage](#usage)
   - [Inputs And Outputs](#inputs-and-outputs)
   - [GitHub Actions](#github-actions)
@@ -30,8 +31,8 @@ A tool to exchange OIDC tokens for [OCI session tokens](https://docs.oracle.com/
 
 To use this tool as a step in your GitHub Actions workflow, reference it using a specific Git tag, commit SHA, or branch. The following options are available, managed automatically by the release workflow:
 
-*   **`@vX` (e.g., `@v1`) - Recommended:** Points to the latest stable release within a specific major version (e.g., the latest `v1.x.y`). This tag is automatically updated upon new releases, allowing you to receive compatible updates and bug fixes without breaking changes.
-*   **`@vX.Y.Z` (e.g., `@v1.1.0`) - Specific Version:** Pins the action to an exact release version created by semantic-release. Use this if you need absolute stability and want to control updates manually.
+*   **`@vX` (e.g., `@v2`) - Recommended:** Points to the latest stable release within a specific major version (e.g., the latest `v2.x.y`). This tag is automatically updated upon new releases, allowing you to receive compatible updates and bug fixes without breaking changes.
+*   **`@vX.Y.Z` (e.g., `@v2.0.0`) - Specific Version:** Pins the action to an exact release version created by semantic-release. Use this if you need absolute stability and want to control updates manually.
 *   **`@<full-commit-sha>` - Highest Integrity Pinning:** Pins to a single immutable commit. Use this for high-assurance production pipelines and strict supply-chain controls.
 *   **`@latest` - Latest Release:** Points to the most recent release. This tag is automatically updated upon new releases by the release workflow.
 *   **`@main` - Bleeding Edge (Not Recommended):** Runs the action directly from the latest commit on the `main` branch. This is unstable and should generally be avoided in production workflows.
@@ -43,10 +44,10 @@ Pinning guidance:
 
 ```yaml
 # Recommended: Use the major version tag for automatic compatible updates
-- uses: gtrevorrow/oci-token-exchange-action@v1
+- uses: gtrevorrow/oci-token-exchange-action@v2
 
-# Alternative: Pin to a specific version (e.g., v1.1.0)
-# - uses: gtrevorrow/oci-token-exchange-action@v1.1.0 
+# Alternative: Pin to a specific version (e.g., v2.0.0)
+# - uses: gtrevorrow/oci-token-exchange-action@v2.0.0
 
 # Highest integrity: Pin to an exact commit SHA
 # - uses: gtrevorrow/oci-token-exchange-action@<full-commit-sha>
@@ -65,8 +66,58 @@ npm install -g @gtrevorrow/oci-token-exchange@<release-tag>
 ```
 
 Stable releases are published with the `latest` npm dist-tag. Major-family
-dist-tags such as `major-v1` are maintained manually after a release. For an
-immutable installation, use an exact package version.
+dist-tags such as `major-v1` and `major-v2` are maintained manually after a
+release. For an immutable installation, use an exact package version.
+
+## Migrating from v1 to v2
+
+For most users, the only required change is the release tag. Existing consumers
+pinned to the GitHub Action `@v1` or npm `major-v1` remain on v1.2.2.
+
+### GitHub Actions
+
+Test the immutable v2 release first:
+
+```yaml
+- uses: gtrevorrow/oci-token-exchange-action@v2.0.0
+```
+
+After validation, follow compatible v2 updates with:
+
+```yaml
+- uses: gtrevorrow/oci-token-exchange-action@v2
+```
+
+The standard action inputs are unchanged.
+
+### npm CLI, GitLab CI, and Bitbucket Pipelines
+
+Test the immutable package version first:
+
+```bash
+npm install @gtrevorrow/oci-token-exchange@2.0.0
+```
+
+After validation, follow compatible v2 updates with:
+
+```bash
+npm install @gtrevorrow/oci-token-exchange@major-v2
+```
+
+The standard GitLab and Bitbucket environment variables are unchanged.
+
+### Library API changes
+
+Consumers importing the package API must apply these renames:
+
+- `tokenExchangeJwtToUpst` to `tokenExchange`
+- `UpstTokenResponse` to `TokenExchangeResponse`
+- `OciConfig.upstToken` to `OciConfig.sessionToken`
+
+### OCI profile validation
+
+`oci_profile` values containing path separators are now rejected. Replace such
+values with a safe profile name such as `DEFAULT` or `CI` before upgrading.
 
 ## Usage
 
@@ -147,7 +198,7 @@ Variable resolution differs between GitHub Actions and CLI/non-GitHub usage:
 Use the example below together with the [Inputs and Outputs](#inputs-and-outputs) reference above.
 
 ```yaml
-- uses: gtrevorrow/oci-token-exchange-action@v1
+- uses: gtrevorrow/oci-token-exchange-action@v2
   with:
     # ci_platform: 'github' # Optional: Defaults to 'github'. Other values: 'gitlab', 'bitbucket', 'local' (though 'github' is typical for Actions)
     oidc_client_identifier: ${{ secrets.OIDC_CLIENT_IDENTIFIER }} 
