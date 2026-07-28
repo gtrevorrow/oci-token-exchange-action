@@ -88,14 +88,20 @@ jobs:
           fi
           echo "--- End of semantic-release-error.log content ---"
           
-          # Always output semantic-release output for debugging
-          echo "--- semantic-release-output.json content ---"
-          if [ -f semantic-release-output.json ]; then
-            cat semantic-release-output.json
+          # Log a compact summary instead of the full semantic-release result,
+          # which can contain the entire commit history and release notes.
+          echo "--- semantic-release result summary ---"
+          if [ -s semantic-release-output.json ] && jq -e . semantic-release-output.json > /dev/null 2>&1; then
+            jq '{
+              nextRelease: (.nextRelease | {type, version, gitTag}),
+              releases: [.releases[]? | {name, version, gitTag, url, pluginName}]
+            }' semantic-release-output.json
+          elif [ -s semantic-release-output.json ]; then
+            echo "semantic-release-output.json is not valid JSON."
           else
-            echo "semantic-release-output.json does not exist."
+            echo "semantic-release-output.json does not exist or is empty."
           fi
-          echo "--- End of semantic-release-output.json content ---"
+          echo "--- End of semantic-release result summary ---"
           
           if [ "$SCRIPT_EXIT_CODE" -eq 1 ]; then
             echo "::error::Semantic release script failed. See logs above for details."
@@ -109,21 +115,6 @@ jobs:
         id: sr_outputs
         run: |
           echo "--- Debug: Script Exit Code was: ${{ env.SCRIPT_EXIT_CODE }} ---"
-          echo "--- Debug: Content of semantic-release-output.json (after programmatic run) ---"
-          if [ -f semantic-release-output.json ]; then
-            cat semantic-release-output.json
-          else
-            echo "semantic-release-output.json does NOT exist."
-          fi
-          echo "--- End of content ---"
-
-          echo "--- Debug: Content of semantic-release-error.log ---"
-          if [ -f semantic-release-error.log ]; then
-            cat semantic-release-error.log
-          else
-            echo "semantic-release-error.log does NOT exist."
-          fi
-          echo "--- End of error log content ---"
 
           if [ "${{ env.SCRIPT_EXIT_CODE }}" -eq 0 ]; then
             # Exit code 0 means a release was made and JSON should be in semantic-release-output.json
@@ -131,59 +122,37 @@ jobs:
               echo "::error::semantic-release-output.json does not exist or is empty, but script exited with 0 (expected release)."
               echo "new_release_published=false" >> $GITHUB_OUTPUT
               echo "new_release_version=" >> $GITHUB_OUTPUT
-              echo "new_release_notes=" >> $GITHUB_OUTPUT
               exit 1 # Fail the step as this is an inconsistent state
             fi
 
-            JSON_OUTPUT=$(cat semantic-release-output.json)
-            if echo "$JSON_OUTPUT" | jq -e . > /dev/null; then
-              echo "Successfully validated JSON from semantic-release-output.json."
-              echo "--- JSON content ---"
-              echo "$JSON_OUTPUT"
-              echo "--- End of JSON content ---"
-
-              VERSION=$(echo "$JSON_OUTPUT" | jq -r '.nextRelease.version // ""')
-              NOTES_RAW=$(echo "$JSON_OUTPUT" | jq -r '.nextRelease.notes // ""')
-              
-              if [ -n "$VERSION" ]; then
-                echo "new_release_published=true" >> $GITHUB_OUTPUT
-                echo "new_release_version=$VERSION" >> $GITHUB_OUTPUT
-                
-                # Ensure notes are properly escaped for multiline output
-                {
-                  echo "new_release_notes<<EOF_NOTES"
-                  echo "$NOTES_RAW"
-                  echo "EOF_NOTES"
-                } >> $GITHUB_OUTPUT
-
-                echo "Successfully parsed release information: Version $VERSION"
-              else
-                echo "::warning::Script exited 0 (release expected) but no new release version found in JSON (.nextRelease.version was empty or null)."
-                echo "new_release_published=false" >> $GITHUB_OUTPUT
-                echo "new_release_version=" >> $GITHUB_OUTPUT
-                echo "new_release_notes=" >> $GITHUB_OUTPUT
-              fi
-            else
+            if ! jq -e . semantic-release-output.json > /dev/null; then
               echo "::error::Failed to validate semantic-release-output.json as JSON, but script exited with 0."
-              echo "File content was:"
-              cat semantic-release-output.json
               echo "new_release_published=false" >> $GITHUB_OUTPUT
               echo "new_release_version=" >> $GITHUB_OUTPUT
-              echo "new_release_notes=" >> $GITHUB_OUTPUT
               exit 1 # Fail the step
             fi
+
+            VERSION=$(jq -r '.nextRelease.version // empty' semantic-release-output.json)
+            if [ -z "$VERSION" ]; then
+              echo "::error::Script exited 0 (release expected) but .nextRelease.version was empty."
+              echo "new_release_published=false" >> $GITHUB_OUTPUT
+              echo "new_release_version=" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+
+            echo "new_release_published=true" >> $GITHUB_OUTPUT
+            echo "new_release_version=$VERSION" >> $GITHUB_OUTPUT
+            echo "Successfully parsed release information: Version $VERSION"
           elif [ "${{ env.SCRIPT_EXIT_CODE }}" -eq 2 ]; then
             # Exit code 2 means no release was made
             echo "No new release published (script exit code 2)."
             echo "new_release_published=false" >> $GITHUB_OUTPUT
             echo "new_release_version=" >> $GITHUB_OUTPUT
-            echo "new_release_notes=" >> $GITHUB_OUTPUT
           else
             # This case should ideally not be reached if the previous step correctly exits on SCRIPT_EXIT_CODE=1
             echo "::error::Unexpected script exit code: ${{ env.SCRIPT_EXIT_CODE }}. Expected 0 (release) or 2 (no release)."
             echo "new_release_published=false" >> $GITHUB_OUTPUT
             echo "new_release_version=" >> $GITHUB_OUTPUT
-            echo "new_release_notes=" >> $GITHUB_OUTPUT
             exit 1 # Fail the step
           fi
         shell: bash
@@ -212,8 +181,6 @@ jobs:
           echo "Semantic Release Outputs (from sr_outputs step):"
           echo "new_release_published: $NEW_RELEASE_PUBLISHED"
           echo "new_release_version: $NEW_RELEASE_VERSION"
-          # Notes can contain special characters, so we'll just check if they exist
-          echo "new_release_notes: [notes available but not displayed due to special characters]"
 
       # Add steps to update major version tag
       - name: Update Major Version Tag (e.g., v1)
