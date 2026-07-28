@@ -15,13 +15,25 @@ on:
     # The `Build and Commit` run triggered by the merge of the PR itself might
     # still be processed by the `workflow_run` definition that existed in `main`
     # *before* the merge.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch or commit SHA to publish as a prerelease"
+        required: true
+        default: "develop"
+      version:
+        description: "Prerelease version, for example 2.0.0-rc.1"
+        required: true
 
 jobs:
   release:
     runs-on: ubuntu-latest
     # Condition to ensure this job only runs if the triggering workflow ("Build and Commit")
     # was itself triggered by a 'push' event to 'main' and completed successfully.
-    if: github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success'
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success'
     permissions:
       # Needs write access to create releases, read packages, and write for discussions (for notes)
       contents: 'write'
@@ -31,18 +43,22 @@ jobs:
       pull-requests: 'write'
       # Issues permission is used to comment on issues being closed in the release
       issues: 'write'
+      # Required for npm trusted publishing and automatic provenance.
+      id-token: 'write'
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: main # Explicitly check out the latest main branch
           fetch-depth: 0 # Ensure full history is fetched
           # token: ${{ secrets.SEMANTIC_RELEASE_PAT }} # Optional: use PAT if default GITHUB_TOKEN has issues with workflow_run checkout, but usually not needed for same repo.
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '22.14.0'
+          node-version: '>=24.10.0 <25'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
 
       - name: Install Dependencies
         run: npm ci
@@ -88,7 +104,6 @@ jobs:
           echo "SCRIPT_EXIT_CODE=$SCRIPT_EXIT_CODE" >> $GITHUB_ENV
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Set Semantic Release Outputs
         id: sr_outputs
@@ -176,8 +191,10 @@ jobs:
       - name: Get released version
         # Check if the new 'Set Semantic Release Outputs' step indicates a release
         if: steps.sr_outputs.outputs.new_release_published == 'true'
+        env:
+          RELEASE_VERSION_OUTPUT: ${{ steps.sr_outputs.outputs.new_release_version }}
         run: |
-          VERSION="${{ steps.sr_outputs.outputs.new_release_version }}"
+          VERSION="$RELEASE_VERSION_OUTPUT"
           # Add 'v' prefix if not already present
           if [[ "$VERSION" != v* ]]; then
             VERSION="v$VERSION"
@@ -188,10 +205,13 @@ jobs:
       # Add a step to debug outputs if the problem persists
       - name: Dump semantic-release outputs
         if: always()
+        env:
+          NEW_RELEASE_PUBLISHED: ${{ steps.sr_outputs.outputs.new_release_published }}
+          NEW_RELEASE_VERSION: ${{ steps.sr_outputs.outputs.new_release_version }}
         run: |
           echo "Semantic Release Outputs (from sr_outputs step):"
-          echo "new_release_published: ${{ steps.sr_outputs.outputs.new_release_published }}"
-          echo "new_release_version: ${{ steps.sr_outputs.outputs.new_release_version }}"
+          echo "new_release_published: $NEW_RELEASE_PUBLISHED"
+          echo "new_release_version: $NEW_RELEASE_VERSION"
           # Notes can contain special characters, so we'll just check if they exist
           echo "new_release_notes: [notes available but not displayed due to special characters]"
 
@@ -218,18 +238,64 @@ jobs:
 
       - name: Update latest tag
         # Only run if a new version was released (RELEASE_VERSION is set)
-        if: env.RELEASE_VERSION 
+        if: env.RELEASE_VERSION
         run: |
           echo "Updating latest tag to point to the same commit as $RELEASE_VERSION"
-          
+
           # Configure git user for this push (if not already done globally in job)
           git config --global user.name "semantic-release-bot"
           git config --global user.email "semantic-release-bot@users.noreply.github.com"
-          
+
           # Create or update the latest tag locally, pointing it to the same commit as the release version tag
-          git tag -f latest $RELEASE_VERSION 
-          
+          git tag -f latest $RELEASE_VERSION
+
           # Force push the latest tag to the remote
           git push --force https://x-access-token:${{ secrets.SEMANTIC_RELEASE_PAT }}@github.com/${{ github.repository }} latest
         env:
           RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
+
+  prerelease:
+    name: Publish npm prerelease
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '>=24.10.0 <25'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Run tests
+        run: npm test
+
+      - name: Set prerelease version
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          case "$RELEASE_VERSION" in
+            *-*) ;;
+            *)
+              echo "::error::Version must be a prerelease, for example 2.0.0-rc.1."
+              exit 1
+              ;;
+          esac
+          npm version "$RELEASE_VERSION" --no-git-tag-version
+
+      - name: Publish prerelease to npm
+        run: npm publish --tag beta
