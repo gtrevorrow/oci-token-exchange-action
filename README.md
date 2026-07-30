@@ -3,6 +3,7 @@
 ## Table of Contents
 
 - [Installation](#installation)
+  - [Runtime Requirements](#runtime-requirements)
   - [As GitHub Action](#as-github-action)
   - [As CLI Tool](#as-cli-tool)
 - [Migrating from v1 to v2](#migrating-from-v1-to-v2)
@@ -26,6 +27,19 @@ A tool to exchange OIDC tokens for [OCI session tokens](https://docs.oracle.com/
 - Bitbucket Pipelines
 
 ## Installation
+
+### Runtime Requirements
+
+The v2 runtime requirement depends on how the project is consumed:
+
+| Usage | Node.js requirement |
+| --- | --- |
+| GitHub Action (`uses: gtrevorrow/oci-token-exchange-action@v2`) | The action runs internally on the GitHub-provided Node.js 24 action runtime. A consumer's application and other workflow steps may continue to use Node.js 20; `actions/setup-node` does not change the action's internal runtime. |
+| npm CLI or library (`@gtrevorrow/oci-token-exchange`) | Node.js 22.14.0 or later is required. Node.js 20 is outside the supported range. Node.js 24 is recommended. |
+
+GitHub-hosted runners provide the action runtime automatically. Self-hosted
+runners must use a current GitHub Actions runner version that supports Node.js
+24 actions.
 
 ### As GitHub Action
 
