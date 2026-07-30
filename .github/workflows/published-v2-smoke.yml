@@ -1,0 +1,84 @@
+name: Published v2 Smoke Test
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 9 * * 1"
+  workflow_run:
+    workflows:
+      - Release
+    types:
+      - completed
+    branches:
+      - main
+
+concurrency:
+  group: published-v2-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Test published v2 action
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (
+        github.event.workflow_run.event == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Install OCI CLI
+        run: |
+          curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh |
+            bash -s -- --accept-all-defaults
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+        shell: bash
+
+      # Deliberately omit checkout, setup-node, npm install, and build steps.
+      # This exercises the published action in the same way as an external consumer.
+      - name: Run published v2 action
+        id: token_exchange
+        uses: gtrevorrow/oci-token-exchange-action@v2
+        with:
+          oidc_client_identifier: ${{ secrets.OIDC_CLIENT_IDENTIFIER }}
+          domain_base_url: ${{ vars.DOMAIN_BASE_URL }}
+          oci_tenancy: ${{ vars.OCI_TENANCY }}
+          oci_region: ${{ vars.OCI_REGION }}
+          oci_home: ${{ runner.temp }}/published-v2-smoke
+          oci_profile: PUBLISHED_V2_SMOKE
+          retry_count: "3"
+
+      - name: Validate generated credentials and OCI access
+        env:
+          OCI_CONFIG_PATH: ${{ steps.token_exchange.outputs.oci_config_path }}
+          OCI_SESSION_TOKEN_PATH: ${{ steps.token_exchange.outputs.oci_session_token_path }}
+          OCI_PRIVATE_KEY_PATH: ${{ steps.token_exchange.outputs.oci_private_key_path }}
+        run: |
+          set -euo pipefail
+
+          for artifact in \
+            "$OCI_CONFIG_PATH" \
+            "$OCI_SESSION_TOKEN_PATH" \
+            "$OCI_PRIVATE_KEY_PATH"
+          do
+            if [[ -z "$artifact" || ! -f "$artifact" ]]; then
+              echo "::error::Expected credential artifact was not created: $artifact"
+              exit 1
+            fi
+
+            mode="$(stat -c '%a' "$artifact")"
+            if [[ "$mode" != "600" ]]; then
+              echo "::error::Expected $artifact to have mode 600, but found $mode"
+              exit 1
+            fi
+          done
+
+          oci \
+            --auth security_token \
+            --config-file "$OCI_CONFIG_PATH" \
+            --profile PUBLISHED_V2_SMOKE \
+            os ns get
+        shell: bash
